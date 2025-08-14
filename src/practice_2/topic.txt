@@ -1,0 +1,8 @@
+#1. Попадаем в контейнер kafka:
+docker exec - it <docker_container_name> bin/bash
+
+#2. Создаем топик с 3 партициями и 2 репликами:
+/opt/bitnami/kafka/bin/kafka-topics.sh --create --topic practice_2 --bootstrap-server localhost:9092 --partitions 3 --replication-factor 2
+
+#3. Проверяем:
+/opt/bitnami/kafka/bin/kafka-topics.sh --describe --topic practice_2 --bootstrap-server localhost:9092

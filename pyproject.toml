@@ -1,0 +1,168 @@
+[tool.mypy]
+python_version = "3.12"
+
+strict = true
+warn_return_any = false
+pretty = true
+
+allow_subclassing_any = true
+allow_untyped_calls = true
+allow_untyped_decorators = true
+ignore_missing_imports = true
+implicit_reexport = true
+show_error_codes = true
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = [
+    "src.*",
+]
+
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+ignore_errors = true
+
+[tool.black]
+target-version = ['py311', 'py312']
+line-length = 120
+
+[tool.pytest.ini_options]
+# * Disable `flaky` plugin for pytest. This plugin conflicts with `rerunfailures` because provide same marker.
+# * Disable `nose` builtin plugin for pytest. This feature deprecated in 7.2 and will be removed in pytest>=8
+# * And we focus on use native pytest capabilities rather than adopt another frameworks.
+addopts = "-rasl --verbosity=2 -p no:flaky -p no:nose --asyncio-mode=strict"
+norecursedirs = [
+    "tests/",
+]
+log_level = "INFO"
+filterwarnings = [
+    "error::pytest.PytestCollectionWarning",
+    "ignore::DeprecationWarning:apispec.utils",
+]
+python_files = [
+    "test_*.py",
+    "example_*.py",
+]
+testpaths = [
+    "tests",
+]
+
+[tool.coverage.run]
+branch = true
+relative_files = true
+source = ["src"]
+
+[tool.coverage.report]
+skip_empty = true
+exclude_also = [
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+    "@(typing(_extensions)?\\.)?overload",
+    "if (typing(_extensions)?\\.)?TYPE_CHECKING:"
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = [".venv/", ".pytest_cache/", ".mypy_cache/"]
+
+[tool.ruff.lint]
+# https://github.com/tiangolo/fastapi/blob/master/pyproject.toml
+select = [
+    "E",   # Error
+    "F",   # Pyflakes
+    "W",   # Pycodestyle
+    "C90", # McCabe complexity
+    "I",   # Isort
+    "N",   # pep8-naming
+    "D101",# Pydocstyle Missing docstring in public nested class
+    "ANN", # Pytype annotations
+    "S",   # Bandit
+    "B",   # Bugbear
+    "COM", # Commas
+    "C",   # Comprehensions
+    "UP",  # pyupgrade
+    "ISC", # Implicit string concat
+    "PIE", # Unnecessary code
+    "T20", # Catch prints
+    "PYI", # validate pyi files
+    "Q",   # Checks for quotes
+    "RSE", # Checks raise statements
+    "RET", # Checks return statements
+    "SLF", # Self checks
+    "SIM", # Simplificator
+    "PTH", # Pathlib checks
+    "ERA", # Checks for commented out code
+    "PL",  # PyLint checks
+    "RUF", # Specific to Ruff checks
+]
+ignore = [
+    "ANN101", # Missing type annotation for `self` in method
+    "ANN102", # Missing type annotation for `cls` in method
+    "ANN401",  # typing.Any are disallowed in `**kwargs
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+    "D100",    # Missing docstring in public module
+    "D104",    # Missing docstring in public package
+    "D105",    # Missing docstring in magic method
+    "D106",    # Missing docstring in public nested class
+    "D107",    # Missing docstring in __init__
+    "D212",    # Multi-line docstring summary should start at the first line
+    "D401",    # First line should be in imperative mood
+    "E402",    # Module level import not at top of file
+    "E501",    # line too long, handled by black
+    "E731",    # Do not assign a `lambda` expression, use a `def`
+    "PLR0913", # Too many arguments for function call
+    "RUF001",  # String contains ambiguous CYRILLIC SMALL LETTER
+    "RUF002",  # Docstring contains ambiguous CYRILLIC SMALL LETTER
+    "RUF003",  # Comment contains ambiguous `е` (CYRILLIC SMALL LETTER
+]
+
+[tool.ruff.lint.mccabe]
+# Flag errors (`C901`) whenever the complexity level exceeds
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = [
+    "ANN", # Missing type annotation for function argument
+    "D101",   # Missing docstring in public class
+    "D103",   # Missing docstring in public function
+    "PLR0913", # Too many arguments in function definition (7 > 5)
+    "PLR0915", # PLR0915 Too many statements (60 > 50)
+    "PLR2004", # Magic value used in comparison, consider replacing 404 with a constant variable
+    "S101",   # Use of assert detected
+    "S105",   # Possible hardcoded password assigned to variable
+    "S106",   # Possible hardcoded password assigned to argument: "password"
+    "S301",   # Use of pickle detected
+    "S311",   # Standard pseudo-random generators are not suitable for security/cryptographic purposes
+    "SLF001", # Private member accessed
+]
+"conftest.py" = [
+    "D",
+    "ANN",
+    "S105",
+    "T201", # `print` found
+    "S311",   # Standard pseudo-random generators are not suitable for security/cryptographic purposes
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+ignore-decorators = ["typing.overload"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+lines-after-imports = 2
+lines-between-types = 1
+
+[tool.docformatter]
+in-place = true
+pre-summary-newline = true
+make-summary-multi-line = true
+close-quotes-on-newline = true
+wrap-summaries = 120
+blank = true

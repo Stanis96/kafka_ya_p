@@ -1,0 +1,153 @@
+x-kafka-base: &kafka-base
+  image: "bitnami/kafka:latest"
+  environment: &kafka-env
+    KAFKA_SCHEMA_REGISTRY_URL: "schema-registry:8081"
+    KAFKA_ENABLE_KRAFT: "yes"
+    KAFKA_CFG_ALLOW_PLAINTEXT_LISTENER: "yes"
+    KAFKA_CFG_PROCESS_ROLES: broker,controller
+    KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    KAFKA_KRAFT_CLUSTER_ID: abcdefghijklmnopqrstuv
+    KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+    KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+
+services:
+  kafka-0:
+    <<: *kafka-base
+    hostname: kafka-0
+    ports:
+      - "9094:9094"
+    environment:
+      <<: *kafka-env
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka-0:9093,1@kafka-1:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-0:9092,EXTERNAL://localhost:9094,CONTROLLER://kafka-0:9093
+    volumes:
+      - ./kafka-0/volumes/data:/bitnami/kafka
+    healthcheck:
+      test: [ "CMD", "kafka-topics.sh", "--bootstrap-server", "kafka-0:9092", "--list" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka-1:
+    <<: *kafka-base
+    hostname: kafka-1
+    ports:
+      - "9095:9094"
+    environment:
+      <<: *kafka-env
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka-0:9093,1@kafka-1:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092,EXTERNAL://localhost:9095,CONTROLLER://kafka-1:9093
+    volumes:
+      - ./kafka-1/volumes/data:/bitnami/kafka
+    healthcheck:
+      test: [ "CMD", "kafka-topics.sh", "--bootstrap-server", "kafka-1:9092", "--list" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka-init:
+    image: bitnami/kafka:latest
+    depends_on:
+      kafka-0:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until kafka-topics.sh --bootstrap-server kafka-0:9092 --list; do
+          echo "Waiting for Kafka..."
+          sleep 5
+        done
+        kafka-topics.sh --create --topic practice_2 --bootstrap-server kafka-0:9092 --partitions 3 --replication-factor 2
+        echo "Topic practice_2 created"
+    restart: "no"
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:latest
+    depends_on:
+      kafka-0:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-0:9092,PLAINTEXT://kafka-1:9092
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://schema-registry:8081/subjects" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.0
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=kraft
+      - KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS=kafka-0:9092,kafka-1:9092
+    depends_on:
+      schema-registry:
+        condition: service_healthy
+
+  kafka-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SEND_MSG_INTERVAL_SECONDS: 20
+      SEND_MSG_COUNT: 16
+    command: python -m src.practice_2.producer
+    depends_on:
+      kafka-0:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  batch-kafka-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      BATCH_SIZE: 10
+    command: python -m src.practice_2.run_consumers
+    deploy:
+      replicas: 2
+    depends_on:
+      kafka-0:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  single-kafka-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      BATCH_SIZE: 1
+    command: python -m src.practice_2.run_consumers
+    deploy:
+      replicas: 2
+    depends_on:
+      kafka-0:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
