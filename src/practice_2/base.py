@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 # Тема Kafka
 TOPIC = "practice_2"
+DLQ_TOPIC = "dlq_practice_2"
 GROUP_ID_CONSUMER_SINGLE_MSG = "consumer_single_msg"
 GROUP_ID_CONSUMER_BATCH_MSG = "consumer_batch_msg"
 
@@ -34,8 +35,10 @@ JSON_SCHEMA = """
 PRODUCER_KAFKA_CONFIG = {
     "bootstrap.servers": "kafka-0:9092,kafka-1:9092",
     "acks": "all",  # Подтверждение от всех реплик
+    "enable.idempotence": True,  # гарантия exactly-once при ретраях
     "retries": 5,  # Количество попыток переотправки
     "retry.backoff.ms": 500,  # Задержка между попытками
+    "max.in.flight.requests.per.connection": 5,  # для идемпотентности
 }
 
 CONSUMER_SINGLE_MSG_KAFKA_CONFIG = {

@@ -84,8 +84,14 @@ class KafkaOrderProducer:
             try:
                 self.producer.produce(
                     topic=self.topic,
-                    key=self.key_serializer("user_key", SerializationContext(self.topic, MessageField.KEY)),
-                    value=self.json_serializer(order, SerializationContext(self.topic, MessageField.VALUE)),
+                    key=self.key_serializer(
+                        order["order_id"],
+                        SerializationContext(self.topic, MessageField.KEY),
+                    ),
+                    value=self.json_serializer(
+                        order,
+                        SerializationContext(self.topic, MessageField.VALUE),
+                    ),
                     on_delivery=self._delivery_report,
                 )
             except SerializationError as e:

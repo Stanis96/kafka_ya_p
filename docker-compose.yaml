@@ -62,8 +62,27 @@ services:
           echo "Waiting for Kafka..."
           sleep 5
         done
-        kafka-topics.sh --create --topic practice_2 --bootstrap-server kafka-0:9092 --partitions 3 --replication-factor 2
-        echo "Topic practice_2 created"
+        if ! kafka-topics.sh --bootstrap-server kafka-0:9092 --list | grep -q "^practice_2$"; then
+          kafka-topics.sh --create \
+            --topic practice_2 \
+            --bootstrap-server kafka-0:9092 \
+            --partitions 3 \
+            --replication-factor 2
+          echo "Topic practice_2 created"
+        else
+          echo "Topic practice_2 already exists"
+        fi
+
+        if ! kafka-topics.sh --bootstrap-server kafka-0:9092 --list | grep -q "^dlq_practice_2$"; then
+          kafka-topics.sh --create \
+            --topic dlq_practice_2 \
+            --bootstrap-server kafka-0:9092 \
+            --partitions 1 \
+            --replication-factor 1
+          echo "Topic dlq_practice_2 created"
+        else
+          echo "Topic dlq_practice_2 already exists"
+        fi
     restart: "no"
 
   schema-registry:
@@ -102,7 +121,7 @@ services:
       dockerfile: Dockerfile
     environment:
       SEND_MSG_INTERVAL_SECONDS: 20
-      SEND_MSG_COUNT: 16
+      SEND_MSG_COUNT: 1000
     command: python -m src.practice_2.producer
     depends_on:
       kafka-0:
