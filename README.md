@@ -1,20 +1,6 @@
 # Инструкция по работе с Kafka-кластером в Docker
 
-## 1. Как развернуть Kafka-кластер
-
-1. Откройте терминал в директории проекта с `docker-compose.yaml`
-2. Запустите кластер командой:
-   ```bash
-   docker compose up -d
-    ```
-## 2. Проверьте работу Kafka-кластер
-
-1. Получите имя контейнера с Kafka:
-   ```bash
-   docker ps -a
-    ```
-   
-## 3. Используемые параметры конфигурации:
+## Используемые параметры конфигурации:
 
 ### KAFKA-KRAFT
 
@@ -38,38 +24,46 @@
 | `KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS` | `kafka-n:9092` | Адрес Kafka брокера, который UI будет использовать для подключения (обычно `<hostname>:<port>`). |
 | `KAFKA_CLUSTERS_0_NAME`              | `kraft`        | Имя кластера для отображения в UI.                                                            |
 
-## 4. Как проверить работу Kafka через Kafka UI
+## Как проверить работу Kafka через Kafka UI
 
 Откройте веб-браузер и перейдите по адресу:
 http://localhost:8080
 
 # Проверка практической работы #2
 
-## 1. Структура проекта:
+## 1. Запуск проекта:
+
+### 1. Откройте терминал в корне проекта
+### 2. Запустите командой:
+```bash
+   docker compose -f src/practice_2/docker-compose.yaml up -d
+   ```
+
+## 2. Структура проекта:
 
 ### 1. scr/practice_2/base.py
 - Базовые конфигурации для Kafka
 
-### 3. src/practice_2/producer.py
+### 2. src/practice_2/producer.py
 - Класс продьюсер `KafkaOrderProducer`
 - Запуск продьюсера
 - В `docker-compose.yaml` для сервиса продьюсера `kafka-producer` задаются параметры:
   - `SEND_MSG_INTERVAL_SECONDS` - интервал между отправками сообщений
   - `SEND_MSG_COUNT` - количество отправленных сообщений
->> Tip: Также предусмотрено 1 сообщение для вывода с ошибкой сериализации
+>Tip: Также предусмотрено 1 сообщение для вывода с ошибкой сериализации
 
-### 4. src/practice_2/consumer.py
+### 3. src/practice_2/consumer.py
 - Класс консьюмер `KafkaOrderConsumer`
 
-### 5. src/practice_2/run_consumers.py
+### 4. src/practice_2/run_consumers.py
 - Запуск консьюмеров
 - В `docker-compose.yaml` для сервисов консьюмеров `batch-kafka-consumer` & `single-kafka-consumer` задается параметр:
   - `BATCH_SIZE` - размер батча, исходя из которого будет выбран тип консьюмера
 
-### 6. src/practice_2/topic.txt
+### 5. src/practice_2/topic.txt
 - Используемые команды для создания топика и проверки его состояния
 
-## 2. Запуск `docker-compose`
+## 3. Просмотр результата
 
 ### 1. Проверка отправки сообщений продьюсером `kafka-producer`:
    ```bash
@@ -81,3 +75,5 @@ http://localhost:8080
       docker logs -f batch-kafka-consumer
       docker logs -f single-kafka-consumer
    ```
+
+# Проверка практической работы #3
