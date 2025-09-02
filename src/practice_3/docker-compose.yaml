@@ -13,6 +13,41 @@ x-kafka-base: &kafka-base
     KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
 
 services:
+  kafka-init:
+    image: bitnami/kafka:latest
+    depends_on:
+      kafka-0:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        BOOTSTRAP="kafka-0:9092"
+
+        until kafka-topics.sh --bootstrap-server $$BOOTSTRAP --list; do
+          echo "Waiting for Kafka..."
+          sleep 5
+        done
+
+        for TOPIC in messages blocked_users filtered_messages forbidden_words; do
+          if ! kafka-topics.sh --bootstrap-server $$BOOTSTRAP --list | grep -q "^$$TOPIC$$"; then
+            kafka-topics.sh --create \
+              --topic "$$TOPIC" \
+              --bootstrap-server $$BOOTSTRAP \
+              --partitions 4 \
+              --replication-factor 1
+            echo "Topic $$TOPIC created"
+          else
+            echo "Topic $$TOPIC already exists"
+          fi
+        done
+
+
+
   kafka-0:
     <<: *kafka-base
     hostname: kafka-0
@@ -126,3 +161,18 @@ services:
     tty: true
     depends_on:
       - ksqldb-server
+
+  faust-app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: faust -A src.practice_3.run_app worker -l INFO
+    depends_on:
+      kafka-0:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
