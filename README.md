@@ -142,3 +142,93 @@ http://localhost:8080
   ```
   
 - В topic `filtered_messages` можно наблюдать соответствующий результат.
+
+# Проверка практической работы #4
+
+## 1. Запуск проекта:
+
+### 1. Откройте терминал в корне проекта
+### 2. Запустите командой:
+```bash
+   docker compose -f src/practice_4/docker-compose.yaml up -d
+   ```
+
+## 2. Проверка задания:
+
+### 1. Топик `balanced_topic` создается с 8 партициями и 3 репликами в `kafka-init` контейнере
+
+### 2. Попадаем внутрь контейнера `kafka-0`
+```bash
+   docker exec -it kafka-0 bin/bash
+   ```
+
+### 3. Проверка текущего распределения партиций
+```bash
+   kafka-topics.sh --bootstrap-server localhost:9092 --topic balanced_topic --describe
+   ```
+
+### 4. Создаем json-файл `rebalance_topic.json`
+```bash
+  cat > /tmp/rebalance_topic.json <<EOF
+  {
+    "version": 1,
+    "topics": [
+      {
+        "topic": "balanced_topic"
+      }
+    ]
+  }
+  EOF
+   ```
+
+### 5. Генерация нового распределения
+```bash
+   kafka-reassign-partitions.sh --bootstrap-server localhost:9092 --broker-list "0,1,2" --topics-to-move-json-file "/tmp/rebalance_topic.json" --generate
+   ```
+
+### 6. Результат записываем в файл `reassignment.json`
+```bash
+  cat > /tmp/reassignment.json <<EOF
+  {"version":1,"partitions":[
+    {"topic":"balanced_topic","partition":0,"replicas":[0,2,1],"log_dirs":["any","any","any"]},
+    {"topic":"balanced_topic","partition":1,"replicas":[1,0,2],"log_dirs":["any","any","any"]},
+    {"topic":"balanced_topic","partition":2,"replicas":[2,1,0],"log_dirs":["any","any","any"]},
+    {"topic":"balanced_topic","partition":3,"replicas":[0,1,2],"log_dirs":["any","any","any"]},
+    {"topic":"balanced_topic","partition":4,"replicas":[1,2,0],"log_dirs":["any","any","any"]},
+    {"topic":"balanced_topic","partition":5,"replicas":[2,0,1],"log_dirs":["any","any","any"]},
+    {"topic":"balanced_topic","partition":6,"replicas":[0,2,1],"log_dirs":["any","any","any"]},
+    {"topic":"balanced_topic","partition":7,"replicas":[1,0,2],"log_dirs":["any","any","any"]}
+  ]}
+  EOF
+   ```
+### 7. Перераспределяем
+
+```bash
+   kafka-reassign-partitions.sh --bootstrap-server localhost:9092 --reassignment-json-file /tmp/reassignment.json --execute
+   ```
+
+### 8. Проверка перераспределения
+
+```bash
+   kafka-reassign-partitions.sh --bootstrap-server localhost:9092 --reassignment-json-file /tmp/reassignment.json --verify
+   ```
+
+### 9. Моделируем сбой
+```bash
+   docker stop kafka-1
+   ```
+
+### 10. Проверка текущего состояния (в поле `Isr` на 1 реплику меньше)
+```bash
+   kafka-topics.sh --bootstrap-server localhost:9092 --topic balanced_topic --describe
+   ```
+
+### 11. Восстанавливаем
+```bash
+   docker start kafka-1
+   ```
+
+### 12. Проверка текущего состояния (в поле `Isr` реплик снова 3)
+```bash
+   kafka-topics.sh --bootstrap-server localhost:9092 --topic balanced_topic --describe
+   ```
