@@ -96,7 +96,7 @@ services:
     environment:
       POSTGRES_USER: postgres-user
       POSTGRES_PASSWORD: postgres-pw
-      POSTGRES_DB: customersclea
+      POSTGRES_DB: customers
     networks:
       - proxynet
 

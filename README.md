@@ -232,3 +232,137 @@ http://localhost:8080
 ```bash
    kafka-topics.sh --bootstrap-server localhost:9092 --topic balanced_topic --describe
    ```
+
+# Проверка практической работы #5
+
+## 1. Запуск проекта:
+
+### 1. Откройте терминал в корне проекта
+### 2. Запустите командой:
+```bash
+   docker compose -f src/example_kafka_integration/docker-compose.yaml up -d
+   ```
+
+## 2. Проверка задания:
+
+### 1. postgres console
+
+```bash
+   docker exec -it postgres psql -h 127.0.0.1 -U postgres-user -d customers
+   ```
+
+### 2. create table
+
+```sql
+     CREATE TABLE users (
+        id int PRIMARY KEY,
+        name varchar(255),
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        private_info VARCHAR 
+     );
+   ```
+
+### 3. Настройка Connector:
+```bash
+  curl -X PUT \
+  -H "Content-Type: application/json" \
+  --data '{
+  "connector.class":"io.confluent.connect.jdbc.JdbcSourceConnector",
+  "tasks.max":"1",
+  "connection.url":"jdbc:postgresql://postgres:5432/customers?user=postgres-user&password=postgres-pw&useSSL=false",
+  "connection.attempts":"5",
+  "connection.backoff.ms":"50000",
+  "mode":"timestamp",
+  "timestamp.column.name":"updated_at",
+  "topic.prefix":"postgresql-jdbc-bulk-",
+  "table.whitelist": "users",
+  "poll.interval.ms": "200",
+  "batch.max.rows": 100,
+  "producer.override.linger.ms": 1000,
+  "producer.override.batch.size": 500,
+  "transforms":"MaskField",
+  "transforms.MaskField.type":"org.apache.kafka.connect.transforms.MaskField$Value",
+  "transforms.MaskField.fields":"private_info",
+  "transforms.MaskField.replacement":"CENSORED"
+  }' \
+  http://localhost:8083/connectors/postgres-source/config
+   ```
+
+### 4. Проверка Состояния:
+```bash
+  curl http://localhost:8083/connectors/postgres-source/status
+   ```
+
+### 5. insert data:
+```sql
+  INSERT INTO users (id, name, private_info)
+  SELECT
+     i,
+    'Name_' || i || '_' || substring('abcdefghijklmnopqrstuvwxyz', (random() * 26)::integer + 1, 1),
+   'Private_info_' || i || '_' || substring('abcdefghijklmnopqrstuvwxyz', (random() * 26)::integer + 1, 1)
+  FROM
+     generate_series(1, 9000000) AS i;
+   ```
+
+### 6. Эксперименты:
+
+| Эксперимент | batch.max.rows | batch.size (bytes) | linger.ms | compression.type | buffer.memory (bytes) | Source Record Write Rate (kops/sec) |
+|------------|----------------|------------------|-----------|-----------------|---------------------|-------------------------------------|
+| 1 | 100 | 500 | 0         | none | 33554432 | 61.6                                |
+| 2 | 1000 | 65536 | 10        | snappy | 67108864 | 83.8                                |
+| 3 | 2000 | 131072 | 20        | lz4 | 134217728 | 153                                 | |
+
+### #1:
+```bash
+  curl -X PUT \
+  -H "Content-Type: application/json" \
+  --data '{
+    "connector.class":"io.confluent.connect.jdbc.JdbcSourceConnector",
+    "tasks.max":"1",
+    "connection.url":"jdbc:postgresql://postgres:5432/customers?user=postgres-user&password=postgres-pw&useSSL=false",
+    "connection.attempts":"5",
+    "connection.backoff.ms":"50000",
+    "mode":"timestamp",
+    "timestamp.column.name":"updated_at",
+    "topic.prefix":"postgresql-jdbc-bulk-",
+    "table.whitelist": "users",
+    "poll.interval.ms": "200",
+    "batch.max.rows": 520,
+    "producer.override.linger.ms": 10,
+    "producer.override.batch.size": 65536,
+    "producer.override.compression.type": "snappy",
+    "producer.override.buffer.memory": 67108864,
+    "transforms":"MaskField",
+    "transforms.MaskField.type":"org.apache.kafka.connect.transforms.MaskField$Value",
+    "transforms.MaskField.fields":"private_info",
+    "transforms.MaskField.replacement":"CENSORED"
+  }' \
+  http://localhost:8083/connectors/postgres-source/config
+   ```
+### #2:
+```bash
+  curl -X PUT \
+  -H "Content-Type: application/json" \
+  --data '{
+    "connector.class":"io.confluent.connect.jdbc.JdbcSourceConnector",
+    "tasks.max":"1",
+    "connection.url":"jdbc:postgresql://postgres:5432/customers?user=postgres-user&password=postgres-pw&useSSL=false",
+    "connection.attempts":"5",
+    "connection.backoff.ms":"50000",
+    "mode":"timestamp",
+    "timestamp.column.name":"updated_at",
+    "topic.prefix":"postgresql-jdbc-bulk-",
+    "table.whitelist": "users",
+    "poll.interval.ms": "200",
+    "batch.max.rows": 1040,
+    "producer.override.linger.ms": 20,
+    "producer.override.batch.size": 131072,
+    "producer.override.compression.type": "lz4",
+    "producer.override.buffer.memory": 134217728,
+    "transforms":"MaskField",
+    "transforms.MaskField.type":"org.apache.kafka.connect.transforms.MaskField$Value",
+    "transforms.MaskField.fields":"private_info",
+    "transforms.MaskField.replacement":"CENSORED"
+  }' \
+  http://localhost:8083/connectors/postgres-source/config
+   ```
