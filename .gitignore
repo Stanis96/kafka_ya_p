@@ -28,7 +28,6 @@ share/python-wheels/
 logs/
 MANIFEST
 
-kafka*/
 *data*/
 
 # PyInstaller
