@@ -23,14 +23,14 @@ services:
     <<: *kafka-common
     restart: always
     ports:
-      - "9094:9094"                           # Проброс EXTERNAL порта наружу (доступ извне)
+      - "9094:9094"
     environment:
       <<: *kafka-common-env
-      KAFKA_CFG_NODE_ID: 0                              # Уникальный ID узла внутри кластера
-      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094  # Список слушателей для разных задач
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-0:9092,EXTERNAL://localhost:9094  # Адреса, которые Kafka "рекламирует" наружу
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-0:9092,EXTERNAL://localhost:9094
     volumes:
-      - kafka_0_data:/bitnami/kafka                     # Хранилище данных Kafka
+      - kafka_0_data:/bitnami/kafka
 
   kafka-1:
     <<: *kafka-common
@@ -87,7 +87,6 @@ services:
     networks:
       - proxynet
 
-  # База данных PostgreSQL (источник данных)
   postgres:
     image: debezium/postgres:16
     hostname: postgres
@@ -95,9 +94,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: postgres-user                     # Имя пользователя
-      POSTGRES_PASSWORD: postgres-pw                   # Пароль
-      POSTGRES_DB: customers                           # Название базы данных
+      POSTGRES_USER: postgres-user
+      POSTGRES_PASSWORD: postgres-pw
+      POSTGRES_DB: customersclea
     networks:
       - proxynet
 
@@ -129,16 +128,44 @@ services:
       CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
 
       # Конвертеры
-      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
-      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_KEY_CONVERTER: "io.confluent.connect.avro.AvroConverter"
+      CONNECT_VALUE_CONVERTER: "io.confluent.connect.avro.AvroConverter"
       CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
       CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
 
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081/'
+      # Export JMX metrics to :9876/metrics for Prometheus
+      KAFKA_JMX_PORT: '9875'
+      KAFKA_OPTS: "-javaagent:/opt/jmx_prometheus_javaagent-0.15.0.jar=9876:/opt/kafka-connect.yml"
+      # Read connection password from file
+      CONNECT_CONFIG_PROVIDERS: "file"
+      CONNECT_CONFIG_PROVIDERS_FILE_CLASS: "org.apache.kafka.common.config.provider.FileConfigProvider"
       # Пути к плагинам
-      CONNECT_PLUGIN_PATH: /usr/share/java,/etc/kafka-connect/jars
+      CONNECT_PLUGIN_PATH: /usr/share/java,/kafka-connect/jars
     volumes:
-      - ./confluent-hub-components/:/etc/kafka-connect/jars
+      - ./confluent-hub-components/:/kafka-connect/jars
+    networks:
+      - proxynet
+
+  prometheus:
+    image: prom/prometheus:v2.30.3
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus:/etc/prometheus
+    command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+    links:
+      - kafka-connect
+    networks:
+      - proxynet
+
+  grafana:
+#    image: "grafana/grafana:9.5.12"
+    build:
+      context: ./grafana
+    ports:
+      - 3000:3000
     networks:
       - proxynet
 
