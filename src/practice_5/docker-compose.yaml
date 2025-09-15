@@ -1,0 +1,289 @@
+version: "3.5"
+
+x-kafka-common:
+  &kafka-common
+  image: bitnami/kafka:3.7
+  environment:
+    &kafka-common-env
+    KAFKA_SCHEMA_REGISTRY_URL: "schema-registry:8081"
+    KAFKA_ENABLE_KRAFT: "yes"
+    KAFKA_CFG_ALLOW_PLAINTEXT_LISTENER: "yes"
+    ALLOW_PLAINTEXT_LISTENER: "yes"
+    KAFKA_KRAFT_CLUSTER_ID: practicum
+    KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+    KAFKA_CFG_PROCESS_ROLES: broker,controller
+    KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka-0:9093,1@kafka-1:9093,2@kafka-2:9093
+    KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+  networks:
+    - proxynet
+
+services:
+  postgres-init:
+    image: postgres:16
+    depends_on:
+      - postgres
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d
+    entrypoint: >
+      bash -c "
+        until pg_isready -h postgres -U postgres-user; do
+          echo 'waiting for postgres...';
+          sleep 2;
+        done;
+        psql -h postgres -U postgres-user -d customers -f /docker-entrypoint-initdb.d/init.sql
+      "
+    environment:
+      PGPASSWORD: postgres-pw
+    networks:
+      - proxynet
+
+  kafka-connector-init:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      - postgres-init
+      - kafka-connect
+    volumes:
+      - ./init:/init
+    entrypoint: |
+      sh -c '
+        echo "waiting for Kafka Connect REST API...";
+        until [ $(curl -s -o /dev/null -w "%{http_code}" http://kafka-connect:8083/connectors) -eq 200 ]; do
+          echo "Kafka Connect not ready yet...";
+          sleep 5;
+        done;
+        echo "Registering connector...";
+        curl -X PUT -H "Content-Type: application/json" \
+          --data @/init/connector.json \
+          http://kafka-connect:8083/connectors/pg-connector/config;
+        echo "Connector registered.";
+      '
+
+    networks:
+      - proxynet
+
+  data-loader:
+    image: postgres:16
+    container_name: data-loader
+    depends_on:
+      kafka-connector-init:
+        condition: service_completed_successfully
+      postgres-init:
+        condition: service_completed_successfully
+    environment:
+      PGPASSWORD: postgres-pw
+    entrypoint: [
+      "sh", "-c",
+      "
+      until pg_isready -h postgres -U postgres-user; do
+        echo 'Waiting for Postgres...';
+        sleep 2;
+      done;
+      echo 'Postgres ready, loading data...';
+      psql -h postgres -U postgres-user -d customers -f /docker-entrypoint-initdb.d/insert_data.sql
+      "
+    ]
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d
+    networks:
+      - proxynet
+
+  kafka-0:
+    <<: *kafka-common
+    restart: always
+    ports:
+      - "9094:9094"
+    environment:
+      <<: *kafka-common-env
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-0:9092,EXTERNAL://localhost:9094
+    volumes:
+      - kafka_0_data:/bitnami/kafka
+    healthcheck:
+      test: [ "CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka-1:
+    <<: *kafka-common
+    restart: always
+    ports:
+      - "9095:9095"
+    environment:
+      <<: *kafka-common-env
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9095
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092,EXTERNAL://localhost:9095
+    volumes:
+      - kafka_1_data:/bitnami/kafka
+    healthcheck:
+      test: [ "CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka-2:
+    <<: *kafka-common
+    restart: always
+    ports:
+      - "9096:9096"
+    environment:
+      <<: *kafka-common-env
+      KAFKA_CFG_NODE_ID: 2
+      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9096
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9092,EXTERNAL://localhost:9096
+    volumes:
+      - kafka_2_data:/bitnami/kafka
+    healthcheck:
+      test: [ "CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ui:
+    image: provectuslabs/kafka-ui:v0.7.0
+    restart: always
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS: kafka-0:9092,kafka-1:9092,kafka-2:9092
+      KAFKA_CLUSTERS_0_NAME: kraft
+    networks:
+      - proxynet
+
+  schema-registry:
+    image: bitnami/schema-registry:7.6
+    ports:
+      - '127.0.0.1:8081:8081'
+    depends_on:
+      - kafka-0
+      - kafka-1
+      - kafka-2
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKA_BROKERS: PLAINTEXT://kafka-0:9092,PLAINTEXT://kafka-1:9092,PLAINTEXT://kafka-2:9092
+    networks:
+      - proxynet
+
+  postgres:
+   image: debezium/postgres:16
+   hostname: postgres
+   container_name: postgres
+   ports:
+     - "5432:5432"
+   environment:
+     POSTGRES_USER: postgres-user
+     POSTGRES_PASSWORD: postgres-pw
+     POSTGRES_DB: customers
+   volumes:
+     - ./postgres/custom-config.conf:/etc/postgresql/postgresql.conf
+   command: postgres -c config_file=/etc/postgresql/postgresql.conf
+   networks:
+     - proxynet
+
+  kafka-connect:
+    build:
+      context: ./kafka-connect
+    ports:
+      - "8083:8083"  # REST API Kafka Connect
+      - "9875:9875"
+      - "9876:9876"
+    depends_on:
+      - kafka-0
+      - kafka-1
+      - kafka-2
+      - schema-registry
+      - postgres
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka-0:9092
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: 'kafka-connect'
+      CONNECT_REST_ADVERTISED_HOST_NAME: 'localhost'
+
+      # Хранение конфигурации, смещений и статусов
+      CONNECT_CONFIG_STORAGE_TOPIC: 'connect-config-storage'
+      CONNECT_OFFSET_STORAGE_TOPIC: 'connect-offset-storage'
+      CONNECT_STATUS_STORAGE_TOPIC: 'connect-status-storage'
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+
+      # Конвертеры
+      CONNECT_KEY_CONVERTER: "io.confluent.connect.avro.AvroConverter"
+      CONNECT_VALUE_CONVERTER: "io.confluent.connect.avro.AvroConverter"
+      CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081/'
+      # Export JMX metrics to :9876/metrics for Prometheus
+      KAFKA_JMX_PORT: '9875'
+      KAFKA_OPTS: "-javaagent:/opt/jmx_prometheus_javaagent-0.15.0.jar=9876:/opt/kafka-connect.yml"
+      # Read connection password from file
+      CONNECT_CONFIG_PROVIDERS: "file"
+      CONNECT_CONFIG_PROVIDERS_FILE_CLASS: "org.apache.kafka.common.config.provider.FileConfigProvider"
+      # Пути к плагинам
+      CONNECT_PLUGIN_PATH: /usr/share/java,/kafka-connect/jars
+    volumes:
+      - ./confluent-hub-components/:/kafka-connect/jars
+    networks:
+      - proxynet
+
+  prometheus:
+    image: prom/prometheus:v2.30.3
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus:/etc/prometheus
+    command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+    links:
+      - kafka-connect
+    networks:
+      - proxynet
+
+  grafana:
+    build:
+      context: ./grafana
+    ports:
+      - 3000:3000
+    networks:
+      - proxynet
+
+  kafka-consumer:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: python -m src.practice_5.consumer.run_consumer
+    depends_on:
+      kafka-0:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      data-loader:
+        condition: service_completed_successfully
+      kafka-connector-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: >
+        sh -c '
+          kafka-topics.sh --bootstrap-server kafka-0:9092,kafka-1:9092,kafka-2:9092 --list | grep -qE "^customers\.public\..+"
+        '
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      - proxynet
+
+networks:
+  proxynet:
+    name: custom_network
+
+volumes:
+  kafka_0_data:
+  kafka_1_data:
+  kafka_2_data:

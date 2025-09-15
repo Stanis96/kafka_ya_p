@@ -1,5 +1,15 @@
 # Инструкция по работе с Kafka-кластером в Docker
 
+## Оглавление
+- [Используемые параметры конфигурации](#используемые-параметры-конфигурации)
+- [Как проверить работу Kafka через Kafka UI](#как-проверить-работу-kafka-через-kafka-ui)
+- [Проверка практической работы №2](#проверка-практической-работы-2)
+- [Проверка практической работы №3](#проверка-практической-работы-3)
+- [Проверка практической работы №4](#проверка-практической-работы-4)
+- [Проверка доп. задания](#проверка-доп-задания)
+- [Проверка практической работы №5](#проверка-практической-работы-5)
+
+
 ## Используемые параметры конфигурации:
 
 ### KAFKA-KRAFT
@@ -111,7 +121,7 @@ http://localhost:8080
 - Добавление/удаление запрещенного слова в topic `forbidden_words`:
    ```json
       {
-      "action": "add", # "remove"
+      "action": "add", // "remove"
       "word": "плохоеслово"
   }
   ```
@@ -233,14 +243,14 @@ http://localhost:8080
    kafka-topics.sh --bootstrap-server localhost:9092 --topic balanced_topic --describe
    ```
 
-# Проверка практической работы #5
+# Проверка доп. задания
 
 ## 1. Запуск проекта:
 
 ### 1. Откройте терминал в корне проекта
 ### 2. Запустите командой:
 ```bash
-   docker compose -f src/example_kafka_integration/docker-compose.yaml up -d
+   docker compose -f src/practice_5/docker-compose.yaml up -d
    ```
 
 ## 2. Проверка задания:
@@ -366,3 +376,47 @@ http://localhost:8080
   }' \
   http://localhost:8083/connectors/postgres-source/config
    ```
+
+# Проверка практической работы #5
+
+## 1. Запуск проекта:
+
+### 1. Откройте терминал в корне проекта
+### 2. Запустите командой:
+```bash
+   docker compose -f src/practice_5/docker-compose.yaml up -d
+   ```
+>Tip: сервис `postgres-init` создаст необходимые таблицы: `users`, `orders`
+
+## 2. Проверка кластера Kafka Connect:
+```bash
+   curl -s localhost:8083 
+   ```
+
+## 3. Проверка на наличие нужных коннекторов в кластере, а именно с `Debezium`:
+```bash
+   curl localhost:8083/connector-plugins 
+   ```
+>Tip: в массиве коннекторов будет интересующий нас:
+```json
+   {"class":"io.debezium.connector.postgresql.PostgresConnector","type":"source","version":"3.2.2.Final"}
+   ```
+## 4. Создание коннектора выполнится с помощью сервиса `kafka-connector-init`, результат выполнения:
+```bash
+   docker logs practice_5-kafka-connector-init-1
+   ```
+>Tip: Файл с настройками коннектора находится `src/practice_5/init/connector.json`
+
+## 5. Загрузку тестовых данных выполняет сервис `data-loader`
+
+## 6. Чтение сообщений после обработки `kafka-connect` выполняет сервис `kafka-consumer`:
+```bash
+   docker logs practice_5-kafka-consumer-1
+   ```
+## 7. Мониторинг в Grafana:
+
+- Откройте веб-браузер и перейдите по адресу: http://localhost:3000/login
+- Авторизуйтесь, используя креды: `admin`, `admin`
+- Выполните импорт dashboards по пути: `src/practice_5/grafana/dashboards/connect.json`
+
+>Tip: для отображения данных на графиках - выставите фильтр, например: `Last 15 minutes`
