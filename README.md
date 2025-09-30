@@ -8,6 +8,7 @@
 - [Проверка практической работы №4](#проверка-практической-работы-4)
 - [Проверка доп. задания](#проверка-доп-задания)
 - [Проверка практической работы №5](#проверка-практической-работы-5)
+- [Проверка практической работы №6](#проверка-практической-работы-6)
 
 
 ## Используемые параметры конфигурации:
@@ -420,3 +421,38 @@ http://localhost:8080
 - Выполните импорт dashboards по пути: `src/practice_5/grafana/dashboards/connect.json`
 
 >Tip: для отображения данных на графиках - выставите фильтр, например: `Last 15 minutes`
+
+# Проверка практической работы #6
+
+## 1. Запуск проекта:
+
+### 1. Откройте терминал в корне проекта
+### 2. Запустите командой:
+```bash
+   docker compose -f src/practice_6/docker-compose.yaml up -d
+   ```
+>Tip: сервис `kafka-init` создаст необходимые топики и ACL для пользователей
+```bash
+   docker logs practice_6-kafka-init-1
+   ```
+
+## 2. Проверка конфигураций:
+
+### 1. В файле `src/practice_6/kafka_server_jaas.conf` находятся конфигурации Kafka для авторизации.
+### 2. В файле `src/practice_6/adminclient-configs.conf` находятся учетные записи клиента.
+### 3. В корне проекта находится корневой сертификат `src/practice_6/`
+### 4. Для каждого брокера созданы `src/practice_6/kafka-n-creds` 
+
+## 3. Проверка producer и consumer:
+
+```bash
+   docker logs practice_6-kafka-producer-1
+  ```
+
+```bash
+   docker logs practice_6-kafka-consumer-1
+  ```
+>Tip: В логах consumer увидим что-то вроде этого, так как не выданы права на topic-2.
+```text
+  Ошибка: KafkaError{code=TOPIC_AUTHORIZATION_FAILED,val=29,str="Subscribed topic not available: topic-2: Broker: Topic authorization failed"}
+  ```

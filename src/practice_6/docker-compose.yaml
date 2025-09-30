@@ -1,0 +1,290 @@
+version: '3.8'
+
+x-kafka_controller:
+  &kafka_controller-env
+  CLUSTER_ID: 'ciWo7IWazngRchmPES6q5A=='
+  KAFKA_PROCESS_ROLES: controller
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 4000@kafka-controller-0:4090,5000@kafka-controller-1:5090
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:SASL_SSL,INTERNAL:SASL_SSL
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: false
+  KAFKA_AUTO_LEADER_REBALANCE_ENABLE: true
+  KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: false
+  KAFKA_REPLICATION_QUOTA_WINDOW_NUM: 11
+  KAFKA_REPLICATION_QUOTA_WINDOW_SIZE_SECONDS: 1
+  KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+
+  # ACL Config
+  KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+  KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: false
+  KAFKA_SUPER_USERS: User:admin
+
+  # SASL Config
+  KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: PLAIN
+  KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+  KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+  KAFKA_LISTENER_NAME_CONTROLLER_PLAIN_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="your_password" user_admin="your_password";
+  KAFKA_SECURITY_PROTOCOL: 'SASL_SSL'
+  # SSL Config
+  KAFKA_SSL_KEYSTORE_TYPE: PKCS12
+  KAFKA_SSL_TRUSTSTORE_TYPE: JKS
+  KAFKA_SSL_KEYSTORE_PASSWORD: your_password
+  KAFKA_SSL_KEY_PASSWORD: your_password
+  KAFKA_SSL_TRUSTSTORE_PASSWORD: your_password
+  KAFKA_SSL_CLIENT_AUTH: required
+
+x-kafka_broker:
+  &kafka_broker-env
+  KAFKA_PROCESS_ROLES: broker
+  CLUSTER_ID: 'ciWo7IWazngRchmPES6q5A=='
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 4000@kafka-controller-0:4090,5000@kafka-controller-1:5090
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: BROKER:SASL_SSL,CONTROLLER:SASL_SSL,INTERNAL:SASL_SSL
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: false
+  KAFKA_AUTO_LEADER_REBALANCE_ENABLE: true
+  KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: false
+  KAFKA_REPLICATION_QUOTA_WINDOW_NUM: 11
+  KAFKA_REPLICATION_QUOTA_WINDOW_SIZE_SECONDS: 1
+  KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+
+  # SASL Config
+  KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+  KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: PLAIN
+  KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+  KAFKA_LISTENER_NAME_BROKER_PLAIN_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="your_password" user_admin="your_password" user_producer="your_password" user_consumer="your_password";
+  KAFKA_LISTENER_NAME_CONTROLLER_PLAIN_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="your_password" user_admin="your_password" user_producer="your_password" user_consumer="your_password";
+  KAFKA_SECURITY_PROTOCOL: 'SASL_SSL'
+
+  # SSL Config
+  KAFKA_SSL_KEYSTORE_TYPE: PKCS12
+  KAFKA_SSL_TRUSTSTORE_TYPE: JKS
+  KAFKA_SSL_KEYSTORE_PASSWORD: your_password
+  KAFKA_SSL_KEY_PASSWORD: your_password
+  KAFKA_SSL_TRUSTSTORE_PASSWORD: your_password
+  KAFKA_SSL_CLIENT_AUTH: required
+
+  # ACL Config
+  KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+  KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: true
+  KAFKA_SUPER_USERS: User:admin
+
+services:
+  kafka-init:
+    image: confluentinc/cp-kafka:7.4.4
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+    volumes:
+      - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
+      - ./kafka-1-creds:/etc/kafka/secrets
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Создаём топики..."
+        kafka-topics --bootstrap-server kafka-1:1090 \
+          --command-config /etc/kafka/adminclient-configs.conf \
+          --create --topic topic-1 --partitions 3 --replication-factor 3
+        kafka-topics --bootstrap-server kafka-1:1090 \
+          --command-config /etc/kafka/adminclient-configs.conf \
+          --create --topic topic-2 --partitions 3 --replication-factor 3
+
+        echo "Список топиков:"
+        kafka-topics --bootstrap-server kafka-1:1090 \
+          --command-config /etc/kafka/adminclient-configs.conf --list
+
+        echo "Настраиваем ACL..."
+        kafka-acls --bootstrap-server kafka-1:1090 \
+          --command-config /etc/kafka/adminclient-configs.conf \
+          --add --allow-principal User:producer --operation Write --topic topic-1
+
+        kafka-acls --bootstrap-server kafka-1:1090 \
+          --command-config /etc/kafka/adminclient-configs.conf \
+          --add --allow-principal User:consumer --operation Read --topic topic-1 --group consumer
+
+        kafka-acls --bootstrap-server kafka-1:1090 \
+          --command-config /etc/kafka/adminclient-configs.conf \
+          --add --allow-principal User:producer --operation Write --topic topic-2
+
+        echo "Инициализация завершена."
+
+  kafka-controller-0:
+    image: confluentinc/cp-kafka:7.4.4
+    ports:
+      - 4090:4090
+      - 4091:4091
+
+    environment:
+      <<: *kafka_controller-env
+      KAFKA_NODE_ID: 4000
+      KAFKA_LISTENERS: CONTROLLER://:4090
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka-controller-0.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka-controller-0.truststore.jks
+    volumes:
+      - ./kafka-controller-0-creds:/etc/kafka/secrets
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
+
+  kafka-controller-1:
+    image: confluentinc/cp-kafka:7.4.4
+    ports:
+      - 5090:5090
+      - 5091:5091
+    environment:
+      <<: *kafka_controller-env
+      KAFKA_NODE_ID: 5000
+      KAFKA_LISTENERS: CONTROLLER://:5090
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka-controller-1.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka-controller-1.truststore.jks
+    volumes:
+      - ./kafka-controller-1-creds:/etc/kafka/secrets
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
+
+  kafka-1:
+    image: confluentinc/cp-kafka:7.4.4
+    ports:
+      - 1090:1090
+      - 1091:1091
+    volumes:
+      - ./kafka-1-creds:/etc/kafka/secrets
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
+    environment:
+      <<: *kafka_broker-env
+      KAFKA_NODE_ID: 1000
+      KAFKA_LISTENERS: BROKER://:1090,INTERNAL://:1092
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-1:1090,INTERNAL://kafka-1:1092
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-1.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-1.truststore.jks
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka-1.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka-1.truststore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka-1_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: kafka-1_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: kafka-1_truststore_creds
+    depends_on:
+      - kafka-controller-0
+      - kafka-controller-1
+    healthcheck:
+      test: >
+        sh -c "kafka-topics --bootstrap-server localhost:1090 \
+              --command-config /etc/kafka/adminclient-configs.conf \
+              --list >/dev/null"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+
+  kafka-2:
+    image: confluentinc/cp-kafka:7.4.4
+    ports:
+      - 2090:2090
+      - 2091:2091
+
+    volumes:
+      - ./kafka-2-creds:/etc/kafka/secrets
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
+    environment:
+      <<: *kafka_broker-env
+      KAFKA_NODE_ID: 2000
+      KAFKA_LISTENERS: BROKER://:2090,INTERNAL://:2092
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-2:2090,INTERNAL://kafka-2:2092
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-2.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-2.truststore.jks
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka-2.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka-2.truststore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka-2_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: kafka-2_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: kafka-2_truststore_creds
+    depends_on:
+      - kafka-controller-0
+      - kafka-controller-1
+    healthcheck:
+      test: >
+        sh -c "kafka-topics --bootstrap-server localhost:1090 \
+              --command-config /etc/kafka/adminclient-configs.conf \
+              --list >/dev/null"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  kafka-3:
+    image: confluentinc/cp-kafka:7.4.4
+    ports:
+      - 3090:3090
+      - 3091:3091
+    volumes:
+      - ./kafka-3-creds:/etc/kafka/secrets
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
+    environment:
+      <<: *kafka_broker-env
+      KAFKA_NODE_ID: 3000
+      KAFKA_LISTENERS: BROKER://:3090,INTERNAL://:3092
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-3:3090,INTERNAL://kafka-3:3092
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-3.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-3.truststore.jks
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka-3.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka-3.truststore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka-3_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: kafka-3_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: kafka-3_truststore_creds
+    depends_on:
+      - kafka-controller-0
+      - kafka-controller-1
+    healthcheck:
+      test: >
+        sh -c "kafka-topics --bootstrap-server localhost:1090 \
+              --command-config /etc/kafka/adminclient-configs.conf \
+              --list >/dev/null"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka-1
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-1:1092
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: SASL_SSL
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_MECHANISM: PLAIN
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="your_password";
+      KAFKA_CLUSTERS_0_PROPERTIES_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-1.truststore.jks
+      KAFKA_CLUSTERS_0_PROPERTIES_SSL_TRUSTSTORE_PASSWORD: your_password
+      KAFKA_CLUSTERS_0_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-1.keystore.pkcs12
+      KAFKA_CLUSTERS_0_SSL_KEYSTORE_PASSWORD: your_password
+      KAFKA_CLUSTERS_0_SSL_KEY_PASSWORD: your_password
+    volumes:
+      - ./kafka-1-creds:/etc/kafka/secrets
+
+  kafka-producer:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: python -m src.practice_6.producer
+    volumes:
+      - ./ca.crt:/app/ca.crt
+      - ./kafka-1-creds:/app/kafka-1-creds
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  kafka-consumer:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: python -m src.practice_6.consumer
+    volumes:
+      - ./ca.crt:/app/ca.crt
+      - ./kafka-1-creds:/app/kafka-1-creds
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
