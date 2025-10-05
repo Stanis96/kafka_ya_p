@@ -1,0 +1,15 @@
+#1. Настройка Kafka Connect:
+
+curl -X PUT \
+-H "Content-Type: application/json" \
+--data '{
+"name": "mirror2",
+"connector.class": "org.apache.kafka.connect.mirror.MirrorSourceConnector",
+"source.cluster.alias":"source",
+"topics":"replicate_me",
+"source.cluster.bootstrap.servers":"broker:9092",
+"target.cluster.bootstrap.servers":"broker2:9093",
+"producer.override.bootstrap.servers":"broker2:9093",
+"offset-syncs.topic.replication.factor":"1"
+}' \
+http://localhost:8083/connectors/mirror2/config

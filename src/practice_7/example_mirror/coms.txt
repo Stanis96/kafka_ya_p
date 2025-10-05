@@ -1,0 +1,12 @@
+ #1. Для проверки успешности зеркалирования данных сначала мы можем просмотреть доступные топики на целевом кластере. Для этого перейдём в терминал Docker и выполним следующую команду:
+/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+
+ #2. После этого мы можем считать данные из темы topic-to-mirror, выполнив команду:
+/opt/bitnami/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic topic-to-mirror --from-beginning
+
+#3. Кроме того, мы можем проверить состояние потребительской группы, связанной с зеркалированием, с помощью следующей команды:
+/opt/bitnami/kafka/bin/kafka-consumer-groups.sh --list --bootstrap-server localhost:9092
+
+#4. Эта команда покажет все потребительские группы, включая группу mirror-maker, для которой мы можем получить информацию о состоянии:
+/opt/bitnami/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group mirror-maker-group
+
