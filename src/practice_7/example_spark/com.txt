@@ -1,0 +1,8 @@
+docker exec -it kafka-1 /opt/bitnami/kafka/bin/kafka-console-producer.sh \
+  --topic spark-topic \
+  --bootstrap-server localhost:9093
+'{"event": "type_1", "message": "message_1"}'
+'{"event": "type_1", "message": "message_2"}'
+'{"event": "type_2", "message": "message_3"}'
+'{"event": "type_3", "message": "message_4"}'
+'{"event": "type_1", "message": "message_5"}'
