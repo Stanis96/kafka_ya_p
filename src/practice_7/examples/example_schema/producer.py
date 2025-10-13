@@ -43,7 +43,7 @@ if __name__ == "__main__":
         "bootstrap.servers": bootstrap_servers,
     }
     producer = Producer(producer_conf)
-    schema_registry_client = SchemaRegistryClient({"url": schema_registry_url})
+    schema_registry_client = SchemaRegistryClient({"url": schema_registry_url, })
 
     try:
         latest = schema_registry_client.get_latest_version(subject)

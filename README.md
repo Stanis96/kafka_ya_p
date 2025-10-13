@@ -9,6 +9,7 @@
 - [Проверка доп. задания](#проверка-доп-задания)
 - [Проверка практической работы №5](#проверка-практической-работы-5)
 - [Проверка практической работы №6](#проверка-практической-работы-6)
+- [Проверка практической работы №7](#проверка-практической-работы-7)
 
 
 ## Используемые параметры конфигурации:
@@ -456,3 +457,27 @@ http://localhost:8080
 ```text
   Ошибка: KafkaError{code=TOPIC_AUTHORIZATION_FAILED,val=29,str="Subscribed topic not available: topic-2: Broker: Topic authorization failed"}
   ```
+
+# Проверка практической работы #7
+
+## Задание #1:
+### Общая информация о Kafka Cluster
+![1_cluster.png](src/practice_7/task_1/media/1_cluster.png)
+
+### Топик
+![2_topic.png](src/practice_7/task_1/media/2_topic.png)
+
+### Создание пользователей
+![3_users.png](src/practice_7/task_1/media/3_users.png)
+
+### Регистрация schema registry
+![4_schema.png](src/practice_7/task_1/media/4_schema.png)
+
+### Проверка зарегистрированной схемы
+![5_schemas.png](src/practice_7/task_1/media/5_schemas.png)
+
+### Результат выполнения producer
+![6_producer.png](src/practice_7/task_1/media/6_producer.png)
+
+### Результат выполнения consumer
+![7_consumer.png](src/practice_7/task_1/media/7_consumer.png)
