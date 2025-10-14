@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
             value = msg.value().decode("utf-8")
             print(
-                f"Получено сообщение: {value=}, partition={msg.partition()}, offset={msg.offset()}",
+                f"Получено сообщение: {value=}, " f"partition={msg.partition()}, offset={msg.offset()}",
             )
 
             # Запись сообщения, как файл, в HDFS

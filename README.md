@@ -476,8 +476,29 @@ http://localhost:8080
 ### Проверка зарегистрированной схемы
 ![5_schemas.png](src/practice_7/task_1/media/5_schemas.png)
 
-### Результат выполнения producer
+### Результат выполнения producer (src/practice_7/task_1/producer.py)
 ![6_producer.png](src/practice_7/task_1/media/6_producer.png)
 
-### Результат выполнения consumer
+### Результат выполнения consumer (src/practice_7/task_1/consumer.py)
 ![7_consumer.png](src/practice_7/task_1/media/7_consumer.png)
+
+## Задание #2:
+### 1. Отправьте сообщения в топик Kafka
+
+```bash
+     docker exec -i kafka-1 /usr/bin/kafka-console-producer \
+    --topic hadoop-topic \
+    --bootstrap-server localhost:9093 <<EOF
+  {"event": "type_1", "message": "message_1"}
+  {"event": "type_2", "message": "message_2"}
+  {"event": "type_3", "message": "message_3"}
+  {"event": "type_2", "message": "message_4"}
+  {"event": "type_1", "message": "message_5"}
+  {"event": "type_1", "message": "message_6"}
+  EOF
+   ```
+### 2. Запустите consumer
+```bash
+    python3 src/practice_7/task_2/consumer.py
+   ```
+![8_hadoop_logs.png](src/practice_7/task_1/media/8_hadoop_logs.png)
