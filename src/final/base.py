@@ -1,5 +1,11 @@
 import logging
 import os
+import secrets
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import StrEnum
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -12,6 +18,10 @@ logger = logging.getLogger(__name__)
 BOOTSTRAP_SERVERS = "localhost:9094,localhost:9095,localhost:9096"
 
 INPUT_PRODUCTS_TOPIC = "input-products"
+USER_REQUESTS_TOPIC = "user-requests"
+USER_RESPONSES_TOPIC = "user-responses"
+
+USER_LIST = ["user_001", "user_002", "user_003"]
 
 PRODUCER_CONFIG = {
     "bootstrap.servers": BOOTSTRAP_SERVERS,
@@ -27,80 +37,39 @@ PRODUCER_CONFIG = {
 }
 
 SCHEMA_REGISTRY_CONFIG = {"url": "http://localhost:8081"}
-PRODUCT_SCHEMA_STR = """
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Product",
-  "type": "object",
-  "properties": {
-    "product_id": { "type": "string" },
-    "name": { "type": "string" },
-    "description": { "type": "string" },
-    "price": {
-      "type": "object",
-      "properties": {
-        "amount": { "type": "number" },
-        "currency": { "type": "string" }
-      },
-      "required": ["amount", "currency"]
-    },
-    "category": { "type": "string" },
-    "brand": { "type": "string" },
-    "stock": {
-      "type": "object",
-      "properties": {
-        "available": { "type": "integer" },
-        "reserved": { "type": "integer" }
-      },
-      "required": ["available", "reserved"]
-    },
-    "sku": { "type": "string" },
-    "tags": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "images": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "url": { "type": "string", "format": "uri" },
-          "alt": { "type": "string" }
-        },
-        "required": ["url", "alt"]
-      }
-    },
-    "specifications": {
-      "type": "object",
-      "properties": {
-        "weight": { "type": "string" },
-        "dimensions": { "type": "string" },
-        "battery_life": { "type": "string" },
-        "water_resistance": { "type": "string" }
-      },
-      "required": ["weight", "dimensions", "battery_life", "water_resistance"]
-    },
-    "created_at": { "type": "string", "format": "date-time" },
-    "updated_at": { "type": "string", "format": "date-time" },
-    "index": { "type": "string" },
-    "store_id": { "type": "string" }
-  },
-  "required": [
-    "product_id",
-    "name",
-    "description",
-    "price",
-    "category",
-    "brand",
-    "stock",
-    "sku",
-    "tags",
-    "images",
-    "specifications",
-    "created_at",
-    "updated_at",
-    "index",
-    "store_id"
-  ]
+
+POSTGRES_CONFIG = {
+    "host": os.getenv("POSTGRES_HOST", "localhost"),
+    "port": int(os.getenv("POSTGRES_PORT", "5432")),
+    "dbname": os.getenv("POSTGRES_DB", "analytics"),
+    "user": os.getenv("POSTGRES_USER", "postgres"),
+    "password": os.getenv("POSTGRES_PASSWORD", "postgres"),
 }
-"""
+
+
+class ClientAPICommands(StrEnum):
+    """
+    Команды терминала для пользовательского ввода.
+    """
+
+    SEARCH = "search"
+    RECOMMENDATIONS = "recommendations"
+    EXIT = "exit"
+
+
+@dataclass(kw_only=True)
+class BaseUserEvent:  # noqa: D101
+    command: str
+    query: str | None = None
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+
+
+@dataclass
+class UserRequestEvent(BaseUserEvent):  # noqa: D101
+    user_id: str = field(default_factory=lambda: secrets.choice(USER_LIST))
+
+
+@dataclass(kw_only=True)
+class UserResponseEvent(BaseUserEvent):  # noqa: D101
+    user_id: str
+    results: list[dict[str, Any]] = field(default_factory=list)

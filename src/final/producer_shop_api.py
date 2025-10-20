@@ -11,10 +11,10 @@ from confluent_kafka.serialization import MessageField, SerializationContext, Se
 from src.final.base import (
     INPUT_PRODUCTS_TOPIC,
     PRODUCER_CONFIG,
-    PRODUCT_SCHEMA_STR,
     SCHEMA_REGISTRY_CONFIG,
     logger,
 )
+from src.final.schemas import PRODUCT_SCHEMA_STR
 
 
 class KafkaProductProducer:
