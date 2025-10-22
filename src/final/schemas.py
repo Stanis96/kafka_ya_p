@@ -100,9 +100,9 @@ USER_RESPONSE_SCHEMA_STR = """
     "user_id": {"type": "string"},
     "command": {"type": "string"},
     "query": {"type": ["string", "null"]},
-    "results": {"type": "array", "items": {"type": "object"}},
+    "results": {"type": ["array", "null"], "items": {"type": "object"}},
     "timestamp": {"type": "string", "format": "date-time"}
   },
-  "required": ["command", "results", "user_id", "timestamp"]
+  "required": ["command", "user_id", "timestamp"]
 }
 """

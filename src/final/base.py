@@ -5,17 +5,20 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
 
-load_dotenv(dotenv_path=".env")
+BASE_DIR = Path(__file__).resolve().parent
+
+load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-BOOTSTRAP_SERVERS = "localhost:9094,localhost:9095,localhost:9096"
+BOOTSTRAP_SERVERS = "localhost:1091"
 
 INPUT_PRODUCTS_TOPIC = "input-products"
 USER_REQUESTS_TOPIC = "user-requests"
@@ -23,13 +26,14 @@ USER_RESPONSES_TOPIC = "user-responses"
 
 USER_LIST = ["user_001", "user_002", "user_003"]
 
+
 PRODUCER_CONFIG = {
     "bootstrap.servers": BOOTSTRAP_SERVERS,
     "security.protocol": "SASL_SSL",
-    "ssl.ca.location": "ca.crt",
+    "ssl.ca.location": str(BASE_DIR / "ca.crt"),
     "sasl.mechanism": "PLAIN",
-    "sasl.username": f"{os.getenv('KAFKA_USERNAME_PRODUCER')}",
-    "sasl.password": f"{os.getenv('KAFKA_PASSWORD_PRODUCER')}",
+    "sasl.username": os.getenv("KAFKA_USERNAME_PRODUCER"),
+    "sasl.password": os.getenv("KAFKA_PASSWORD_PRODUCER"),
     "acks": "all",
     "enable.idempotence": True,
     "max.in.flight.requests.per.connection": 3,
@@ -72,4 +76,4 @@ class UserRequestEvent(BaseUserEvent):  # noqa: D101
 @dataclass(kw_only=True)
 class UserResponseEvent(BaseUserEvent):  # noqa: D101
     user_id: str
-    results: list[dict[str, Any]] = field(default_factory=list)
+    results: list[dict[str, Any]] | None = None

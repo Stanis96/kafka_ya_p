@@ -1,3 +1,5 @@
+import sys
+
 from dataclasses import asdict
 
 import psycopg2
@@ -38,12 +40,11 @@ class KafkaClientAPIProducer:
 
     @staticmethod
     def _delivery_report(err: KafkaError, msg: Message) -> None:
-        msg_val = msg.value().decode() if msg.value() else "None"
         if err:
-            logger.error(f"Message '{msg_val}' delivery failed. Error: {err}, Topic: {msg.topic()}")
+            logger.error(f"Message delivery failed. Error: {err}, Topic: {msg.topic()}")
         else:
             logger.info(
-                f"Message '{msg_val}' delivered to {msg.topic()} [Partition {msg.partition()}] at offset {msg.offset()}",
+                f"Message delivered to {msg.topic()} [Partition {msg.partition()}] at offset {msg.offset()}",
             )
 
     def send_to_kafka(self, topic: str, key: str, value: dict[str, object], serializer: JSONSerializer) -> None:
@@ -58,31 +59,43 @@ class KafkaClientAPIProducer:
         except SerializationError as e:
             logger.error(f"Serialization failed for message {value}: {e}")
 
-    def search_product(self, name: str) -> list[dict[str, object]]:
+    def search_product(self, name: str) -> list[dict[str, object]] | None:
         self.pg_cursor.execute(
             "SELECT product_id, name, price_amount, brand FROM products WHERE name ILIKE %s LIMIT 5;",
             (f"%{name}%",),
         )
         rows = self.pg_cursor.fetchall()
 
+        if not rows:
+            return None
         return [{"product_id": r[0], "name": r[1], "price": float(r[2]), "brand": r[3]} for r in rows]
 
-    def recommend_products(self) -> list[dict[str, object]]:
+    def recommend_products(self) -> list[dict[str, object]] | None:
         self.pg_cursor.execute(
             "SELECT product_id, name, price_amount, stock_available FROM products ORDER BY stock_available DESC LIMIT 3;",
         )
         rows = self.pg_cursor.fetchall()
+        if not rows:
+            return None
 
         return [{"product_id": r[0], "name": r[1], "price": float(r[2]), "stock_available": r[3]} for r in rows]
 
     def handle_command(self, command: str) -> None:
-        if command == ClientAPICommands.SEARCH:
-            query = command.split(" ", 1)[1]
+        parts = command.strip().split(" ", 1)
+        cmd_name = parts[0].upper()
+        args = parts[1] if len(parts) > 1 else None
+
+        if cmd_name == ClientAPICommands.SEARCH.name:
+            if not args:
+                logger.warning("Для команды SEARCH нужно указать название товара.")
+                return
+
+            query = args
             request_event = UserRequestEvent(command=ClientAPICommands.SEARCH, query=query)
 
             self.send_to_kafka(
                 USER_REQUESTS_TOPIC,
-                key=ClientAPICommands.SEARCH,
+                key=ClientAPICommands.SEARCH.name,
                 value=asdict(request_event),
                 serializer=self.request_serializer,
             )
@@ -96,19 +109,22 @@ class KafkaClientAPIProducer:
             )
             self.send_to_kafka(
                 USER_RESPONSES_TOPIC,
-                key=ClientAPICommands.SEARCH,
+                key=ClientAPICommands.SEARCH.name,
                 value=asdict(response_event),
                 serializer=self.response_serializer,
             )
-            logger.info(
-                f"Уважаемый Пользователь {request_event.user_id}!\nПо Вашему запросу найдены товары:\n{results}"
-            )
+            if results:
+                logger.info(
+                    f"Уважаемый Пользователь {request_event.user_id}!\nПо Вашему запросу найдены товары:\n{results}",
+                )
+            else:
+                logger.info(f"Уважаемый Пользователь {request_event.user_id}!\nПо Вашему запросу товары не найдены.")
 
-        elif command == ClientAPICommands.RECOMMENDATIONS:
+        elif cmd_name == ClientAPICommands.RECOMMENDATIONS.name:
             request_event = UserRequestEvent(command=ClientAPICommands.RECOMMENDATIONS)
             self.send_to_kafka(
                 USER_REQUESTS_TOPIC,
-                key=ClientAPICommands.RECOMMENDATIONS,
+                key=ClientAPICommands.RECOMMENDATIONS.name,
                 value=asdict(request_event),
                 serializer=self.request_serializer,
             )
@@ -121,13 +137,22 @@ class KafkaClientAPIProducer:
             )
             self.send_to_kafka(
                 USER_RESPONSES_TOPIC,
-                key=ClientAPICommands.RECOMMENDATIONS,
+                key=ClientAPICommands.RECOMMENDATIONS.name,
                 value=asdict(response_event),
                 serializer=self.response_serializer,
             )
-            logger.info(
-                f"Уважаемый Пользователь {request_event.user_id}!\nПо Вашему запросу найдены рекомендации:\n{results}"
-            )
+            if results:
+                logger.info(
+                    f"Уважаемый Пользователь {request_event.user_id}!\nПо Вашему запросу найдены рекомендации:\n{results}",
+                )
+            else:
+                logger.info(
+                    f"Уважаемый Пользователь {request_event.user_id}!\nПо Вашему запросу рекомендации не найдены.",
+                )
+
+        elif cmd_name == ClientAPICommands.EXIT.name:
+            logger.info("Выход из приложения...")
+            sys.exit()
 
         else:
             logger.warning(f"Неизвестная команда. Используйте: {[x.name for x in ClientAPICommands]}")
@@ -135,15 +160,20 @@ class KafkaClientAPIProducer:
 
 if __name__ == "__main__":
     client_api = KafkaClientAPIProducer()
+    commands_list = [
+        x.name + " <название товара>" if x.name == ClientAPICommands.SEARCH.name else x.name for x in ClientAPICommands
+    ]
+
     logger.info(
-        f"Доступные команды: {[x.name + '<название товара>' if x.name == ClientAPICommands.SEARCH else x.name for x in ClientAPICommands]}",
+        "Доступные команды: %s",
+        ", ".join(commands_list),
     )
 
     try:
         while True:
             cmd = input("> ").strip()
-            if cmd == ClientAPICommands.EXIT:
-                break
             client_api.handle_command(cmd)
+    except KeyboardInterrupt:
+        logger.info("Producer stopped by user")
     except Exception as e:
         logger.error(f"Producer stopped due to error: {e}")

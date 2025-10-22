@@ -528,3 +528,28 @@ http://localhost:8080
   ```
 
 ![1_arch.png](src/final/media/1_arch.png)
+
+## 3. Запуск проекта:
+
+### 1. Откройте терминал в корне проекта
+### 2. Запустите командой:
+```bash
+   docker compose -f src/final/docker-compose.yaml up -d
+   ```
+>Tip: сервис `kafka-init` создаст необходимые топики и ACL для пользователей
+```bash
+   docker logs final-kafka-init-1
+   ```
+>Tip: сервис `postgres-init` создаст необходимые таблицы в PostgreSQL (скрипт `src/final/init/init.sql`)
+```bash
+   docker logs final-postgres-init-1
+   ```
+
+### 3. Запустите SHOP API producer
+```bash
+    python3 -m src.final.producer_shop_api
+   ```
+>Tip: Будет выполнена отправка продуктов из источника (`src/final/data_source/products.json`)
+в topic `input-products`
+
+![2_shop_api.png](src/final/media/2_shop_api.png)

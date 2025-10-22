@@ -1,5 +1,4 @@
 import json
-import time
 
 from pathlib import Path
 
@@ -81,13 +80,13 @@ class KafkaProductProducer:
         return []
 
     @staticmethod
-    def _delivery_report(err: KafkaError, msg: Message) -> None:
-        msg_val = msg.value().decode() if msg.value() else "None"
+    def _delivery_report(err: KafkaError, msg: Message, product_id: str) -> None:
         if err:
-            logger.error(f"Message '{msg_val}' delivery failed. Error: {err}, Topic: {msg.topic()}")
+            logger.error(f"Message for product {product_id} delivery failed: {err}")
         else:
             logger.info(
-                f"Message '{msg_val}' delivered to {msg.topic()} [Partition {msg.partition()}] at offset {msg.offset()}",
+                f"Message for product {product_id} delivered to {msg.topic()} "
+                f"[Partition {msg.partition()}] at offset {msg.offset()}",
             )
 
     def __call__(self, products_json_path: Path) -> None:
@@ -104,7 +103,7 @@ class KafkaProductProducer:
                         product,
                         SerializationContext(self.topic, MessageField.VALUE),
                     ),
-                    on_delivery=self._delivery_report,
+                    on_delivery=lambda err, msg, pid=product["product_id"]: self._delivery_report(err, msg, pid),
                 )
             except SerializationError as e:
                 logger.error(f"Serialization failed for message: {product}. Error: {e}")
@@ -119,12 +118,9 @@ if __name__ == "__main__":
         json_schema=PRODUCT_SCHEMA_STR,
     )
 
-    interval_seconds = 1
-    products_json_path = Path(__file__).parent / "products.json"
+    products_json_path = Path(__file__).parent / "data_source" / "products.json"
 
     try:
-        while True:
-            producer(products_json_path=products_json_path)
-            time.sleep(interval_seconds)
+        producer(products_json_path=products_json_path)
     except Exception as e:
         logger.error(f"Producer stopped due to error: {e}")
