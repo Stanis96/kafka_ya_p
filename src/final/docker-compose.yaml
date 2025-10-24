@@ -8,7 +8,7 @@ x-kafka_controller:
   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:SASL_SSL,INTERNAL:SASL_SSL
   KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
   KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-  KAFKA_AUTO_CREATE_TOPICS_ENABLE: false
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
   KAFKA_AUTO_LEADER_REBALANCE_ENABLE: true
   KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: false
   KAFKA_REPLICATION_QUOTA_WINDOW_NUM: 11
@@ -42,7 +42,7 @@ x-kafka_broker:
   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: BROKER:SASL_SSL,CONTROLLER:SASL_SSL,INTERNAL:SASL_SSL,EXTERNAL:SASL_SSL
   KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
   KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-  KAFKA_AUTO_CREATE_TOPICS_ENABLE: false
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
   KAFKA_AUTO_LEADER_REBALANCE_ENABLE: true
   KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: false
   KAFKA_REPLICATION_QUOTA_WINDOW_NUM: 11
@@ -53,8 +53,8 @@ x-kafka_broker:
   KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
   KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: PLAIN
   KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
-  KAFKA_LISTENER_NAME_BROKER_PLAIN_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="your_password" user_admin="your_password" user_producer="your_password" user_consumer="your_password";
-  KAFKA_LISTENER_NAME_CONTROLLER_PLAIN_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="your_password" user_admin="your_password" user_producer="your_password" user_consumer="your_password";
+  KAFKA_LISTENER_NAME_BROKER_PLAIN_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="your_password" user_admin="your_password" user_producer="your_password" user_consumer="your_password" user_faust_app="your_password";
+  KAFKA_LISTENER_NAME_CONTROLLER_PLAIN_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="your_password" user_admin="your_password" user_producer="your_password" user_consumer="your_password" user_faust_app="your_password";
   KAFKA_SECURITY_PROTOCOL: 'SASL_SSL'
 
   # SSL Config
@@ -93,6 +93,9 @@ services:
         kafka-topics --bootstrap-server kafka-1:1090 \
           --command-config /etc/kafka/adminclient-configs.conf \
           --create --topic user-responses --partitions 3 --replication-factor 3
+        kafka-topics --bootstrap-server kafka-1:1090 \
+          --command-config /etc/kafka/adminclient-configs.conf \
+          --create --topic products --partitions 3 --replication-factor 3
 
         echo "Список топиков:"
         kafka-topics --bootstrap-server kafka-1:1090 \
@@ -108,6 +111,15 @@ services:
         kafka-acls --bootstrap-server kafka-1:1090 \
           --command-config /etc/kafka/adminclient-configs.conf \
           --add --allow-principal User:producer --operation Write --topic user-responses
+        kafka-acls --bootstrap-server kafka-1:1090 \
+          --command-config /etc/kafka/adminclient-configs.conf \
+          --add --allow-principal User:faust_app --operation Read --topic '*'
+        kafka-acls --bootstrap-server kafka-1:1090 \
+          --command-config /etc/kafka/adminclient-configs.conf \
+          --add --allow-principal User:faust_app --operation Write --topic '*'
+        kafka-acls --bootstrap-server kafka-1:1090 \
+          --command-config /etc/kafka/adminclient-configs.conf \
+          --add --allow-principal User:faust_app --operation Create --topic '*'
 
         echo "Инициализация завершена."
 
@@ -173,8 +185,6 @@ services:
     environment:
       <<: *kafka_broker-env
       KAFKA_NODE_ID: 1000
-#      KAFKA_LISTENERS: BROKER://:1090,INTERNAL://:1092
-#      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-1:1090,INTERNAL://kafka-1:1092
       KAFKA_LISTENERS: BROKER://:1090,INTERNAL://:1092,EXTERNAL://:1091
       KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-1:1090,INTERNAL://kafka-1:1092,EXTERNAL://localhost:1091
       KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-1.keystore.pkcs12
@@ -210,8 +220,6 @@ services:
     environment:
       <<: *kafka_broker-env
       KAFKA_NODE_ID: 2000
-#      KAFKA_LISTENERS: BROKER://:2090,INTERNAL://:2092
-#      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-2:2090,INTERNAL://kafka-2:2092
       KAFKA_LISTENERS: BROKER://:2090,INTERNAL://:2092,EXTERNAL://:2091
       KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-2:2090,INTERNAL://kafka-2:2092,EXTERNAL://localhost:2091
       KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-2.keystore.pkcs12
@@ -245,8 +253,6 @@ services:
     environment:
       <<: *kafka_broker-env
       KAFKA_NODE_ID: 3000
-#      KAFKA_LISTENERS: BROKER://:3090,INTERNAL://:3092
-#      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-3:3090,INTERNAL://kafka-3:3092
       KAFKA_LISTENERS: BROKER://:3090,INTERNAL://:3092,EXTERNAL://:3091
       KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-3:3090,INTERNAL://kafka-3:3092,EXTERNAL://localhost:3091
       KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-3.keystore.pkcs12

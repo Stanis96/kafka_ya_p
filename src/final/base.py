@@ -19,18 +19,23 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 BOOTSTRAP_SERVERS = "localhost:1091"
+CA_CERT = str(BASE_DIR / "ca.crt")
 
 INPUT_PRODUCTS_TOPIC = "input-products"
 USER_REQUESTS_TOPIC = "user-requests"
 USER_RESPONSES_TOPIC = "user-responses"
+PRODUCTS_TOPIC = "products"
 
 USER_LIST = ["user_001", "user_002", "user_003"]
 
+FAUST_APP_NAME = "product-filter-app"
+KAFKA_FAUST_USERNAME = os.getenv("KAFKA_USERNAME_FAUST")
+KAFKA_FAUST_PASSWORD = os.getenv("KAFKA_PASSWORD_FAUST")
 
 PRODUCER_CONFIG = {
     "bootstrap.servers": BOOTSTRAP_SERVERS,
     "security.protocol": "SASL_SSL",
-    "ssl.ca.location": str(BASE_DIR / "ca.crt"),
+    "ssl.ca.location": CA_CERT,
     "sasl.mechanism": "PLAIN",
     "sasl.username": os.getenv("KAFKA_USERNAME_PRODUCER"),
     "sasl.password": os.getenv("KAFKA_PASSWORD_PRODUCER"),
@@ -49,6 +54,14 @@ POSTGRES_CONFIG = {
     "user": os.getenv("POSTGRES_USER", "postgres"),
     "password": os.getenv("POSTGRES_PASSWORD", "postgres"),
 }
+
+POSTGRES_DSN = (
+    f"postgresql://{POSTGRES_CONFIG['user']}:"
+    f"{POSTGRES_CONFIG['password']}@"
+    f"{POSTGRES_CONFIG['host']}:"
+    f"{POSTGRES_CONFIG['port']}/"
+    f"{POSTGRES_CONFIG['dbname']}"
+)
 
 
 class ClientAPICommands(StrEnum):

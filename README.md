@@ -553,3 +553,24 @@ http://localhost:8080
 в topic `input-products`
 
 ![2_shop_api.png](src/final/media/2_shop_api.png)
+
+### 4. Добавим запрещенные товары в PostgreSQL:
+```bash
+    docker exec -it postgres psql -U postgres -d analytics
+   ```
+```sql
+    INSERT INTO forbidden_products (product_id, reason) 
+    VALUES
+        ('78490', 'why not'),
+        ('56741', 'so bad');
+   ```
+```sql
+    SELECT * FROM forbidden_products;
+   ```
+![3_forbidden.png](src/final/media/3_forbidden.png)
+
+### 5. Запускаем потоковую обработку продуктов, не запрещенные отправляются в topic `products`:
+```bash
+    PYTHONPATH=src faust -A final.filtered_products worker -l info
+   ```
+![4_faust.png](src/final/media/4_faust.png)
