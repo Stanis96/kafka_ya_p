@@ -1,35 +1,43 @@
 {
-  "name": "pg-connector",
-  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "name": "products-sink",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "products",
+    "connection.url": "jdbc:postgresql://postgres:5432/analytics",
+    "connection.user": "postgres",
+    "connection.password": "postgres",
 
-  "database.hostname": "postgres",
-  "database.port": "5432",
-  "database.user": "postgres-user",
-  "database.password": "postgres-pw",
-  "database.dbname": "customers",
-  "database.server.name": "customers",
+    "auto.create": "true",
+    "auto.evolve": "true",
 
-  "table.include.list": "public.users,public.orders",
+    "insert.mode": "upsert",
+    "pk.mode": "record_value",
+    "pk.fields": "product_id",
+    "table.name.format": "public.products",
 
-  "snapshot.mode": "when_needed",
-  "slot.name": "debezium_slot",
-  "publication.name": "debezium_pub",
+    "transforms": "flatten,dropImages",
+    "transforms.flatten.type": "org.apache.kafka.connect.transforms.Flatten$Value",
+    "transforms.flatten.delimiter": "_",
+    "transforms.dropImages.type": "org.apache.kafka.connect.transforms.ReplaceField$Value",
+    "transforms.dropImages.blacklist": "images",
 
-  "transforms": "unwrap",
-  "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
-  "transforms.unwrap.drop.tombstones": "false",
-  "transforms.unwrap.delete.handling.mode": "rewrite",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "io.confluent.connect.json.JsonSchemaConverter",
 
-  "topic.prefix": "customers",
-  "topic.creation.enable": "true",
-  "topic.creation.default.replication.factor": "1",
-  "topic.creation.default.partitions": "1",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+    "value.converter.schema.registry.ssl.truststore.location": "/etc/kafka/secrets/kafka.kafka-1.truststore.jks",
+    "value.converter.schema.registry.ssl.truststore.password": "your_password",
+    "value.converter.schemas.enable": "false",
 
-  "skipped.operations": "none",
+    "consumer.override.security.protocol": "SASL_SSL",
+    "consumer.override.sasl.mechanism": "PLAIN",
+    "consumer.override.sasl.jaas.config": "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"your_password\";",
+    "consumer.override.ssl.truststore.location": "/etc/kafka/secrets/kafka.kafka-1.truststore.jks",
+    "consumer.override.ssl.truststore.password": "your_password",
 
-  "column.mask.hash.v2.SHA-256.with.salt.secret": "public.users.email",
-
-  "key.converter": "org.apache.kafka.connect.storage.StringConverter",
-  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-  "value.converter.schemas.enable": true
+    "batch.size": "100",
+    "max.retries": "10",
+    "retry.backoff.ms": "3000"
+  }
 }

@@ -29,3 +29,4 @@ hdfs==2.7.3
 pyspark==3.5.4
 python-dotenv==1.1.1
 psycopg2-binary==2.9.11
+python-schema-registry-client==2.6.1

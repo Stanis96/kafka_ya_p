@@ -140,6 +140,28 @@ services:
     environment:
       PGPASSWORD: postgres
 
+  kafka-connect-init:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      - postgres-init
+      - kafka-connect
+    volumes:
+      - ./init:/init
+    entrypoint: |
+      sh -c '
+        echo "waiting for Kafka Connect REST API...";
+        until [ $(curl -s -o /dev/null -w "%{http_code}" http://kafka-connect:8083/connectors) -eq 200 ]; do
+          echo "Kafka Connect not ready yet...";
+          sleep 5;
+        done;
+        echo "Registering connector...";
+        # POST на /connectors для нового коннектора
+        curl -X POST -H "Content-Type: application/json" \
+          --data @/init/connector.json \
+          http://kafka-connect:8083/connectors;
+        echo "Connector registered.";
+      '
+
   kafka-controller-0:
     image: confluentinc/cp-kafka:7.4.4
     ports:
@@ -337,3 +359,74 @@ services:
    volumes:
      - ./postgres/custom-config.conf:/etc/postgresql/postgresql.conf
    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+
+  kafka-connect:
+   build:
+     context: ./kafka-connect
+   ports:
+     - "8083:8083"  # REST API Kafka Connect
+     - "9875:9875"
+     - "9876:9876"
+   depends_on:
+     - kafka-1
+     - kafka-2
+     - kafka-3
+     - schema-registry
+     - postgres
+   environment:
+     CONNECT_BOOTSTRAP_SERVERS: kafka-1:1092
+     CONNECT_REST_PORT: 8083
+     CONNECT_GROUP_ID: 'kafka-connect'
+     CONNECT_REST_ADVERTISED_HOST_NAME: 'localhost'
+
+     # Хранение конфигурации, смещений и статусов
+     CONNECT_CONFIG_STORAGE_TOPIC: 'connect-config-storage'
+     CONNECT_OFFSET_STORAGE_TOPIC: 'connect-offset-storage'
+     CONNECT_STATUS_STORAGE_TOPIC: 'connect-status-storage'
+     CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+     CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+     CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+
+     # SSL
+     CONNECT_SECURITY_PROTOCOL: SASL_SSL
+     CONNECT_SASL_MECHANISM: PLAIN
+     CONNECT_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="your_password";
+     CONNECT_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-1.truststore.jks
+     CONNECT_SSL_TRUSTSTORE_PASSWORD: your_password
+
+     # Конвертеры
+     CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+     CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+     CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+     CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+
+     CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+     CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+     # Export JMX metrics to :9876/metrics for Prometheus
+     KAFKA_JMX_PORT: '9875'
+     KAFKA_OPTS: "-javaagent:/opt/jmx_prometheus_javaagent-0.15.0.jar=9876:/opt/kafka-connect.yml"
+     # Read connection password from file
+     CONNECT_CONFIG_PROVIDERS: "file"
+     CONNECT_CONFIG_PROVIDERS_FILE_CLASS: "org.apache.kafka.common.config.provider.FileConfigProvider"
+     # Пути к плагинам
+     CONNECT_PLUGIN_PATH: /usr/share/java,/kafka-connect/jars
+   volumes:
+     - ./confluent-hub-components/:/kafka-connect/jars
+     - ./kafka-1-creds:/etc/kafka/secrets
+
+
+  prometheus:
+    image: prom/prometheus:v2.30.3
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus:/etc/prometheus
+    command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
+    links:
+      - kafka-connect
+
+  grafana:
+    build:
+      context: ./grafana
+    ports:
+      - 3000:3000

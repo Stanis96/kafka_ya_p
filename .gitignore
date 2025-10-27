@@ -5,8 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
-*.jar
-jars/
+#*.jar
+#jars/
 # Distribution / packaging
 bin/
 .Python

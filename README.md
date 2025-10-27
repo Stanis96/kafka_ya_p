@@ -569,8 +569,42 @@ http://localhost:8080
    ```
 ![3_forbidden.png](src/final/media/3_forbidden.png)
 
-### 5. Запускаем потоковую обработку продуктов, не запрещенные отправляются в topic `products`:
+### 5. Запускаем потоковую обработку продуктов, разрешенные отправляются в topic `products`:
 ```bash
     PYTHONPATH=src faust -A final.filtered_products worker -l info
    ```
 ![4_faust.png](src/final/media/4_faust.png)
+
+### 6. Проверяем синхронизацию в PostgreSQL, таблица`products`:
+
+>Tip: Cервис `kafka-connect-init` выполнит настройку JdbcSinkConnector и после появления отфильтровонных продуктов в topic `products`,
+> выполнится синхронизация с БД.
+```bash
+   docker logs final-kafka-connect-init-1
+   ```
+```bash
+    docker exec -it postgres psql -U postgres -d analytics
+   ```
+```sql
+    SELECT * FROM products;
+   ```
+![5_sink_db.png](src/final/media/5_sink_db.png)
+
+### 7. Имитируем пользовательскую активность CLIENT API:
+```bash
+    python3 -m src.final.producer_client_api
+   ```
+![6_user_activity.png](src/final/media/6_user_activity.png)
+
+>Tip: В topic `user-requests` отправляются запросы пользователей, а в topic `user-responses` полученные ответы на запросы,
+> для последующей аналитики.
+
+### 8. Просмотр сбор метрик Prometheus и графиков в Grafana:
+Prometheus: http://localhost:9090/classic/targets
+![7_prometheus.png](src/final/media/7_prometheus.png)
+
+Grafana: http://localhost:3000
+>Tip: Авторизуйтесь, используя креды: `admin`/`admin` и выполнить импорт дашбордов по пути `src/final/grafana/dashboards/connect.json`
+> при необходимости возможно настроить AlertManager на нужную метрику.
+
+![8_grafana.png](src/final/media/8_grafana.png)
