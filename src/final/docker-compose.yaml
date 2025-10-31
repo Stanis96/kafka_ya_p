@@ -67,8 +67,10 @@ x-kafka_broker:
 
   # ACL Config
   KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
-  KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: true
+  KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: false
   KAFKA_SUPER_USERS: User:admin
+  KAFKA_HEAP_OPTS: "-Xmx1G -Xms1G"
+
 
 services:
   kafka-init:
@@ -78,7 +80,7 @@ services:
         condition: service_healthy
     volumes:
       - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
-      - ./kafka-1-creds:/etc/kafka/secrets
+      - ./kafka-1-creds:/etc/kafka/secrets/cluster1
     entrypoint:
       - /bin/sh
       - -c
@@ -145,21 +147,34 @@ services:
     depends_on:
       - postgres-init
       - kafka-connect
+      - kafka-connect-mm2
     volumes:
       - ./init:/init
     entrypoint: |
       sh -c '
-        echo "waiting for Kafka Connect REST API...";
+        echo "Waiting for Kafka Connect (8083)...";
         until [ $(curl -s -o /dev/null -w "%{http_code}" http://kafka-connect:8083/connectors) -eq 200 ]; do
           echo "Kafka Connect not ready yet...";
           sleep 5;
         done;
-        echo "Registering connector...";
-        # POST на /connectors для нового коннектора
-        curl -X POST -H "Content-Type: application/json" \
+        echo "Registering first connector...";
+        curl -s -X POST -H "Content-Type: application/json" \
           --data @/init/connector.json \
-          http://kafka-connect:8083/connectors;
-        echo "Connector registered.";
+          http://kafka-connect:8083/connectors \
+          || echo "Connector already exists or failed";
+
+        echo "Waiting for Kafka Connect MM2 (8084)...";
+        until [ $(curl -s -o /dev/null -w "%{http_code}" http://connect-mm2:8083/connectors) -eq 200 ]; do
+          echo "Kafka Connect MM2 not ready yet...";
+          sleep 5;
+        done;
+        echo "Registering MirrorMaker2 connector...";
+        curl -s -X POST -H "Content-Type: application/json" \
+          --data @/init/connector-mm2.json \
+          http://connect-mm2:8083/connectors \
+          || echo "MM2 connector already exists or failed";
+
+        echo "All connectors processed.";
       '
 
   kafka-controller-0:
@@ -178,6 +193,11 @@ services:
       - ./kafka-controller-0-creds:/etc/kafka/secrets
       - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
       - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1536M
 
   kafka-controller-1:
     image: confluentinc/cp-kafka:7.4.4
@@ -194,6 +214,55 @@ services:
       - ./kafka-controller-1-creds:/etc/kafka/secrets
       - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
       - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1536M
+
+  kafka-controller-2:
+    image: confluentinc/cp-kafka:7.4.4
+    ports:
+      - 6090:6090
+    environment:
+      <<: *kafka_controller-env
+      CLUSTER_ID: 'ciWo7IWazngRchmPES6q5B=='
+      KAFKA_NODE_ID: 6000
+      KAFKA_LISTENERS: CONTROLLER://:6090
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 6000@kafka-controller-2:6090,7000@kafka-controller-3:7090
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka-controller-2.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka-controller-2.truststore.jks
+    volumes:
+      - ./kafka-controller-2-creds:/etc/kafka/secrets
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./adminclient-configs-b.conf:/etc/kafka/adminclient-configs-b.conf
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1536M
+
+  kafka-controller-3:
+    image: confluentinc/cp-kafka:7.4.4
+    ports:
+      - 7090:7090
+    environment:
+      <<: *kafka_controller-env
+      CLUSTER_ID: 'ciWo7IWazngRchmPES6q5B=='
+      KAFKA_NODE_ID: 7000
+      KAFKA_LISTENERS: CONTROLLER://:7090
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 6000@kafka-controller-2:6090,7000@kafka-controller-3:7090
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka-controller-3.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka-controller-3.truststore.jks
+    volumes:
+      - ./kafka-controller-3-creds:/etc/kafka/secrets
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./adminclient-configs-b.conf:/etc/kafka/adminclient-configs-b.conf
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1536M
 
   kafka-1:
     image: confluentinc/cp-kafka:7.4.4
@@ -201,7 +270,7 @@ services:
       - 1090:1090
       - 1091:1091
     volumes:
-      - ./kafka-1-creds:/etc/kafka/secrets
+      - ./kafka-1-creds:/etc/kafka/secrets/cluster1/
       - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
       - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
     environment:
@@ -209,8 +278,8 @@ services:
       KAFKA_NODE_ID: 1000
       KAFKA_LISTENERS: BROKER://:1090,INTERNAL://:1092,EXTERNAL://:1091
       KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-1:1090,INTERNAL://kafka-1:1092,EXTERNAL://localhost:1091
-      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-1.keystore.pkcs12
-      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-1.truststore.jks
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/cluster1/kafka.kafka-1.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/cluster1/kafka.kafka-1.truststore.jks
       KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka-1.keystore.pkcs12
       KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka-1.truststore.jks
       KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka-1_keystore_creds
@@ -227,7 +296,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
-
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
 
   kafka-2:
     image: confluentinc/cp-kafka:7.4.4
@@ -236,7 +309,7 @@ services:
       - 2091:2091
 
     volumes:
-      - ./kafka-2-creds:/etc/kafka/secrets
+      - ./kafka-2-creds:/etc/kafka/secrets/cluster1/
       - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
       - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
     environment:
@@ -244,8 +317,8 @@ services:
       KAFKA_NODE_ID: 2000
       KAFKA_LISTENERS: BROKER://:2090,INTERNAL://:2092,EXTERNAL://:2091
       KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-2:2090,INTERNAL://kafka-2:2092,EXTERNAL://localhost:2091
-      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-2.keystore.pkcs12
-      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-2.truststore.jks
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/cluster1/kafka.kafka-2.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/cluster1/kafka.kafka-2.truststore.jks
       KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka-2.keystore.pkcs12
       KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka-2.truststore.jks
       KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka-2_keystore_creds
@@ -262,6 +335,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
 
   kafka-3:
     image: confluentinc/cp-kafka:7.4.4
@@ -269,7 +347,7 @@ services:
       - 3090:3090
       - 3091:3091
     volumes:
-      - ./kafka-3-creds:/etc/kafka/secrets
+      - ./kafka-3-creds:/etc/kafka/secrets/cluster1/
       - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
       - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
     environment:
@@ -277,8 +355,8 @@ services:
       KAFKA_NODE_ID: 3000
       KAFKA_LISTENERS: BROKER://:3090,INTERNAL://:3092,EXTERNAL://:3091
       KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-3:3090,INTERNAL://kafka-3:3092,EXTERNAL://localhost:3091
-      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-3.keystore.pkcs12
-      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.kafka-3.truststore.jks
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/cluster1/kafka.kafka-3.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/cluster1/kafka.kafka-3.truststore.jks
       KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka-3.keystore.pkcs12
       KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka-3.truststore.jks
       KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka-3_keystore_creds
@@ -295,6 +373,104 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+
+  kafka-b-4:
+    image: confluentinc/cp-kafka:7.4.4
+    ports:
+      - 4092:4092
+    environment:
+      <<: *kafka_broker-env
+      CLUSTER_ID: 'ciWo7IWazngRchmPES6q5B=='
+      KAFKA_NODE_ID: 4001
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 6000@kafka-controller-2:6090,7000@kafka-controller-3:7090
+      KAFKA_LISTENERS: BROKER://:4092,INTERNAL://:4093,EXTERNAL://:4094
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-b-4:4092,INTERNAL://kafka-b-4:4093,EXTERNAL://localhost:4094
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/cluster2/kafka.kafka-b-4.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/cluster2/kafka.kafka-b-4.truststore.jks
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka-b-4.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka-b-4.truststore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka-b-4_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: kafka-b-4_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: kafka-b-4_truststore_creds
+    depends_on:
+      - kafka-controller-2
+      - kafka-controller-3
+    volumes:
+      - ./kafka-b-4-creds:/etc/kafka/secrets/cluster2
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./adminclient-configs-b.conf:/etc/kafka/adminclient-configs-b.conf
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+
+  kafka-b-5:
+    image: confluentinc/cp-kafka:7.4.4
+    ports:
+      - 5092:5092
+    environment:
+      <<: *kafka_broker-env
+      CLUSTER_ID: 'ciWo7IWazngRchmPES6q5B=='
+      KAFKA_NODE_ID: 5001
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 6000@kafka-controller-2:6090,7000@kafka-controller-3:7090
+      KAFKA_LISTENERS: BROKER://:5092,INTERNAL://:5093,EXTERNAL://:5094
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-b-5:5092,INTERNAL://kafka-b-5:5093,EXTERNAL://localhost:5094
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/cluster2/kafka.kafka-b-5.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/cluster2/kafka.kafka-b-5.truststore.jks
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka-b-5.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka-b-5.truststore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka-b-5_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: kafka-b-5_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: kafka-b-5_truststore_creds
+    depends_on:
+      - kafka-controller-2
+      - kafka-controller-3
+    volumes:
+      - ./kafka-b-5-creds:/etc/kafka/secrets/cluster2
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./adminclient-configs-b.conf:/etc/kafka/adminclient-configs-b.conf
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+
+  kafka-b-6:
+    image: confluentinc/cp-kafka:7.4.4
+    ports:
+      - 6092:6092
+    environment:
+      <<: *kafka_broker-env
+      CLUSTER_ID: 'ciWo7IWazngRchmPES6q5B=='
+      KAFKA_NODE_ID: 6001
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 6000@kafka-controller-2:6090,7000@kafka-controller-3:7090
+      KAFKA_LISTENERS: BROKER://:6092,INTERNAL://:6093,EXTERNAL://:6094
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-b-6:6092,INTERNAL://kafka-b-6:6093,EXTERNAL://localhost:6094
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/cluster2/kafka.kafka-b-6.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/cluster2/kafka.kafka-b-6.truststore.jks
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka-b-6.keystore.pkcs12
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka-b-6.truststore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka-b-6_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: kafka-b-6_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: kafka-b-6_truststore_creds
+    depends_on:
+      - kafka-controller-2
+      - kafka-controller-3
+    volumes:
+      - ./kafka-b-6-creds:/etc/kafka/secrets/cluster2
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./adminclient-configs-b.conf:/etc/kafka/adminclient-configs-b.conf
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
 
   schema-registry:
     image: confluentinc/cp-schema-registry:7.4.4
@@ -322,6 +498,10 @@ services:
       - ./kafka-1-creds:/etc/kafka/secrets
       - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
       - ./adminclient-configs.conf:/etc/kafka/adminclient-configs.conf
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -345,6 +525,10 @@ services:
       KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
     volumes:
       - ./kafka-1-creds:/etc/kafka/secrets
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   postgres:
    image: debezium/postgres:16
@@ -359,6 +543,10 @@ services:
    volumes:
      - ./postgres/custom-config.conf:/etc/postgresql/postgresql.conf
    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+   deploy:
+     resources:
+       limits:
+         memory: 1G
 
   kafka-connect:
    build:
@@ -414,6 +602,77 @@ services:
      - ./confluent-hub-components/:/kafka-connect/jars
      - ./kafka-1-creds:/etc/kafka/secrets
 
+  kafka-connect-mm2:
+    image: confluentinc/cp-kafka-connect:7.9.2
+    container_name: connect-mm2
+    ports:
+      - "8084:8083"
+    depends_on:
+      - kafka-b-4
+      - kafka-b-5
+      - kafka-b-6
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: 'kafka-b-4:4093,kafka-b-5:5093,kafka-b-6:6093'
+      CONNECT_REST_ADVERTISED_HOST_NAME: localhost
+      CONNECT_GROUP_ID: mirror-maker-2
+      CONNECT_CONFIG_STORAGE_TOPIC: mm2-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: mm2-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: mm2-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.converters.ByteArrayConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.converters.ByteArrayConverter
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+
+      # Общая безопасность
+      CONNECT_SECURITY_PROTOCOL: SASL_SSL
+      CONNECT_SASL_MECHANISM: PLAIN
+      CONNECT_SASL_JAAS_CONFIG: >
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin"
+        password="your_password";
+
+      # SSL
+      CONNECT_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/cluster1/kafka.kafka-1.truststore.jks
+      CONNECT_SSL_TRUSTSTORE_PASSWORD: your_password
+      CONNECT_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/cluster1/kafka.kafka-1.keystore.pkcs12
+      CONNECT_SSL_KEYSTORE_PASSWORD: your_password
+
+      # Producer настройки для MirrorMaker2 (под target cluster)
+      CONNECT_PRODUCER_SECURITY_PROTOCOL: SASL_SSL
+      CONNECT_PRODUCER_SASL_MECHANISM: PLAIN
+      CONNECT_PRODUCER_SASL_JAAS_CONFIG: >
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin"
+        password="your_password";
+      CONNECT_PRODUCER_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/cluster2/kafka.kafka-b-4.truststore.jks
+      CONNECT_PRODUCER_SSL_TRUSTSTORE_PASSWORD: your_password
+      CONNECT_PRODUCER_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/cluster2/kafka.kafka-b-4.keystore.pkcs12
+      CONNECT_PRODUCER_SSL_KEYSTORE_PASSWORD: your_password
+
+      # Consumer настройки для MirrorMaker2 (под source cluster)
+      CONNECT_CONSUMER_SECURITY_PROTOCOL: SASL_SSL
+      CONNECT_CONSUMER_SASL_MECHANISM: PLAIN
+      CONNECT_CONSUMER_SASL_JAAS_CONFIG: >
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin"
+        password="your_password";
+      CONNECT_CONSUMER_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/cluster1/kafka.kafka-1.truststore.jks
+      CONNECT_CONSUMER_SSL_TRUSTSTORE_PASSWORD: your_password
+      CONNECT_CONSUMER_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/cluster1/kafka.kafka-1.keystore.pkcs12
+      CONNECT_CONSUMER_SSL_KEYSTORE_PASSWORD: your_password
+
+      CONNECT_PLUGIN_PATH: /usr/share/java
+    volumes:
+      - ./kafka-1-creds:/etc/kafka/secrets/cluster1
+      - ./kafka-b-4-creds:/etc/kafka/secrets/cluster2
+      - ./adminclient-configs-b.conf:/etc/kafka/adminclient-configs-b.conf
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   prometheus:
     image: prom/prometheus:v2.30.3

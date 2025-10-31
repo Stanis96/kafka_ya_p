@@ -577,7 +577,7 @@ http://localhost:8080
 
 ### 6. Проверяем синхронизацию в PostgreSQL, таблица`products`:
 
->Tip: Cервис `kafka-connect-init` выполнит настройку JdbcSinkConnector и после появления отфильтровонных продуктов в topic `products`,
+>Tip: Cервис `kafka-connect-init` выполнит настройку JdbcSinkConnector и после появления отфильтрованных продуктов в topic `products`,
 > выполнится синхронизация с БД.
 ```bash
    docker logs final-kafka-connect-init-1
@@ -599,7 +599,34 @@ http://localhost:8080
 >Tip: В topic `user-requests` отправляются запросы пользователей, а в topic `user-responses` полученные ответы на запросы,
 > для последующей аналитики.
 
-### 8. Просмотр сбор метрик Prometheus и графиков в Grafana:
+### 8. Проверка репликации на второй кластер Kafka с помощью Mirror Maker2:
+>Tip: Cервис `kafka-connect-init` выполнит настройку MirrorSourceConnector
+```bash
+   docker logs final-kafka-connect-init-1
+   ```
+Проверка статуса:
+```bash
+    curl -s http://localhost:8084/connectors/mm2-src/status | jq
+   ```
+
+Запрос список топиков со второго кластера:
+```bash
+    docker exec -it final-kafka-b-4-1 kafka-topics \
+  --bootstrap-server kafka-b-4:4093 \
+  --command-config /etc/kafka/adminclient-configs-b.conf \
+  --list
+   ```
+
+Чтение сообщений из реплицируемого топика, например:
+```bash
+    docker exec -it final-kafka-b-4-1 kafka-topics \
+  --bootstrap-server kafka-b-4:4093 \
+  --command-config /etc/kafka/adminclient-configs-b.conf \
+  --list
+   ```
+![9_mm2.png](src/final/media/9_mm2.png)
+
+### 9. Просмотр сбор метрик Prometheus и графиков в Grafana:
 Prometheus: http://localhost:9090/classic/targets
 ![7_prometheus.png](src/final/media/7_prometheus.png)
 
