@@ -599,7 +599,7 @@ http://localhost:8080
 >Tip: В topic `user-requests` отправляются запросы пользователей, а в topic `user-responses` полученные ответы на запросы,
 > для последующей аналитики.
 
-### 8. Проверка репликации на второй кластер Kafka с помощью Mirror Maker2:
+### 8. Проверяем репликацию на второй кластер Kafka с помощью Mirror Maker2:
 >Tip: Cервис `kafka-connect-init` выполнит настройку MirrorSourceConnector
 ```bash
    docker logs final-kafka-connect-init-1
@@ -619,14 +619,40 @@ http://localhost:8080
 
 Чтение сообщений из реплицируемого топика, например:
 ```bash
-    docker exec -it final-kafka-b-4-1 kafka-topics \
-  --bootstrap-server kafka-b-4:4093 \
-  --command-config /etc/kafka/adminclient-configs-b.conf \
-  --list
+ docker exec -it connect-mm2 kafka-console-consumer \
+ --bootstrap-server kafka-b-4:4093 \
+ --topic input-products \
+ --from-beginning \
+ --consumer.config /etc/kafka/adminclient-configs-b.conf \
+ --max-messages 5
    ```
 ![9_mm2.png](src/final/media/9_mm2.png)
 
-### 9. Просмотр сбор метрик Prometheus и графиков в Grafana:
+### 9. Записываем пользовательскую активность из топиков: `user-requests`, `user-responses` в HDFS для последующей аналитики Spark:
+```bash
+    python3 -m src.final.consumer_hdfs
+   ```
+![10_hdfs.png](src/final/media/10_hdfs.png)
+
+### 10. Читаем данные из HDFS и выполняем аналитику Spark, результат записывается во второй кластер Kafka в topic `analysis`:
+>Tip: запуск PySpark Application следует выполнять на версии `python 3.8.10` для совместимости spark-master и spark-worker
+```bash
+    python3 -m src.final.analysis_spark
+   ```
+![11_spark.png](src/final/media/11_spark.png)
+
+Проверяем результат на втором кластере Kafka в topic `analysis`:
+```bash
+    docker exec -it final-kafka-b-4-1 kafka-console-consumer \
+   --bootstrap-server kafka-b-4:4093 \
+   --topic analysis \
+   --from-beginning \
+   --consumer.config /etc/kafka/adminclient-configs-b.conf \
+   --max-messages 5
+   ```
+![12_result.png](src/final/media/12_result.png)
+
+### 11. Просмотр сбор метрик Prometheus и графиков в Grafana:
 Prometheus: http://localhost:9090/classic/targets
 ![7_prometheus.png](src/final/media/7_prometheus.png)
 

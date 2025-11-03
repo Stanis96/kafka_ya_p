@@ -1,0 +1,50 @@
+### Для контроллеров
+1. openssl genrsa -out kafka-controller-3.key 2048
+openssl req -new -key kafka-controller-3.key -out kafka-controller-3.csr -subj "/CN=kafka-controller-3"
+
+2. openssl x509 -req -in kafka-controller-3.csr -CA ../ca.crt -CAkey ../ca.key -CAcreateserial -out kafka-controller-3.crt -days 365 -sha256
+
+3. openssl pkcs12 -export -in kafka-controller-3.crt -inkey kafka-controller-3.key \
+  -out kafka-controller-3.keystore.pkcs12 -name kafka-controller-3 \
+  -CAfile ../ca.crt -caname root -password pass:your_password
+
+4. keytool -importcert -file ../ca.crt -alias root \
+  -keystore kafka-controller-3.truststore.jks -storepass your_password -noprompt
+
+### Для брокеров
+
+1. openssl req -new -newkey rsa:4096 -nodes \
+  -keyout kafka-b-6.key \
+  -out kafka-b-6.csr \
+  -config kafka-b-6.cnf
+
+2.openssl x509 -req -in kafka-b-6.csr \
+  -CA ../ca.crt -CAkey ../ca.key -CAcreateserial \
+  -out kafka-b-6.crt -days 365 -sha256 \
+  -extensions v3_req -extfile kafka-b-6.cnf
+
+3. openssl pkcs12 -export \
+  -in kafka-b-6.crt \
+  -inkey kafka-b-6.key \
+  -out kafka-b-6.p12 \
+  -name kafka-b-6 \
+  -CAfile ../ca.crt \
+  -caname root \
+  -password pass:your_password
+
+4. keytool -importkeystore \
+  -deststorepass your_password \
+  -destkeypass your_password \
+  -destkeystore kafka.kafka-b-6.keystore.pkcs12 \
+  -srckeystore kafka-b-6.p12 \
+  -srcstoretype PKCS12 \
+  -srcstorepass your_password \
+  -alias kafka-b-6
+
+ 5. keytool -import -v -trustcacerts \
+  -alias CARoot \
+  -file ../ca.crt \
+  -keystore kafka.kafka-b-6.truststore.jks \
+  -storepass your_password \
+  -noprompt
+

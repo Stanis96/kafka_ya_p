@@ -199,3 +199,10 @@ Temporary Items
 # iCloud generated files
 *.icloud
 *.xml
+!src/final/config/*
+!src/final/confluent-hub-components/jars/confluentinc-kafka-connect-jdbc-10.8.4/lib/
+!src/final/confluent-hub-components/**
+
+
+
+

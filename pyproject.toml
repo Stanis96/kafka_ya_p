@@ -27,6 +27,7 @@ ignore_errors = true
 [tool.black]
 target-version = ['py311', 'py312']
 line-length = 120
+exclude = ["src.final.analysis_spark"]
 
 [tool.pytest.ini_options]
 # * Disable `flaky` plugin for pytest. This plugin conflicts with `rerunfailures` because provide same marker.
@@ -70,6 +71,7 @@ exclude_also = [
 target-version = "py312"
 line-length = 120
 extend-exclude = [".venv/", ".pytest_cache/", ".mypy_cache/"]
+exclude = ["src.final.analysis_spark"]
 
 [tool.ruff.lint]
 # https://github.com/tiangolo/fastapi/blob/master/pyproject.toml
