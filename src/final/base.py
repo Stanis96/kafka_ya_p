@@ -19,12 +19,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 BOOTSTRAP_SERVERS = "localhost:1091"
+BOOTSTRAP_SERVERS_CLUSTER2 = "localhost:4094,localhost:5094,localhost:6094"
 CA_CERT = str(BASE_DIR / "ca.crt")
 
 INPUT_PRODUCTS_TOPIC = "input-products"
 USER_REQUESTS_TOPIC = "user-requests"
 USER_RESPONSES_TOPIC = "user-responses"
 PRODUCTS_TOPIC = "products"
+ANALYSIS_TOPIC = "analysis"
+
+CONSUMER_GROUP_HDFS = "hadoop-consumer-group"
 
 USER_LIST = ["user_001", "user_002", "user_003"]
 
@@ -45,7 +49,23 @@ PRODUCER_CONFIG = {
     "retries": 3,
 }
 
+CONSUMER_CONFIG = {
+    "bootstrap.servers": BOOTSTRAP_SERVERS_CLUSTER2,
+    "security.protocol": "SASL_SSL",
+    "ssl.ca.location": CA_CERT,
+    "sasl.mechanism": "PLAIN",
+    "sasl.username": os.getenv("KAFKA_USERNAME_CONSUMER"),
+    "sasl.password": os.getenv("KAFKA_PASSWORD_CONSUMER"),
+    "group.id": CONSUMER_GROUP_HDFS,
+    "auto.offset.reset": "earliest",
+    "enable.auto.commit": True,
+    "session.timeout.ms": 6_000,
+}
+
 SCHEMA_REGISTRY_CONFIG = {"url": "http://localhost:8081"}
+
+HDFS_CLIENT_URL = "http://localhost:9870"
+HDFS_USER = "root"
 
 POSTGRES_CONFIG = {
     "host": os.getenv("POSTGRES_HOST", "localhost"),
